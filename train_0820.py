@@ -32,7 +32,7 @@ from utils.main_utils import get_gs_mask, get_pixels, get_normals, error_to_prob
 from utils.scene_utils import render_training_image
 from utils.timer import Timer
 
-from load_megasam_c2w import load_megasam_c2w
+from load_megasam import load_megasam_c2w
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -146,15 +146,19 @@ def scene_reconstruction(
                 # pred_R, pred_T = dyn_gaussians._posenet(time_in.view(1, 1))
 
                 c2w_matrix = train_c2w[cam_index]
-                # 提取前3×3作为旋转矩阵R
-                R_matrix = c2w_matrix[:3, :3]
-                # 提取前3行第4列作为平移向量T
-                T_vector = c2w_matrix[:3, 3]
+                # 提取c2w的旋转矩阵R和平移向量T
+                R_c2w = c2w_matrix[:3, :3]  # 相机到世界的旋转矩阵
+                T_c2w = c2w_matrix[:3, 3]   # 相机到世界的平移向量（相机原点在世界坐标系中的位置）
+                
+                # 将c2w转换为w2c（世界到相机）
+                # 1. 旋转矩阵：w2c的旋转 = c2w旋转的转置（正交矩阵性质）
+                R_w2c = R_c2w.T
+                # 2. 平移向量：w2c的平移 = - (w2c旋转矩阵 × c2w平移向量)
+                T_w2c = -np.dot(R_w2c, T_c2w)
 
                 # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
-                pred_R = torch.from_numpy(R_matrix).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
-                pred_R = torch.transpose(pred_R, 2, 1).cuda()  # test 0820
-                pred_T = torch.from_numpy(T_vector).unsqueeze(0).cuda()  # 形状变为 [1, 3]
+                pred_R = torch.from_numpy(R_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
+                pred_T = torch.from_numpy(T_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3]
 
                 R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
                 t_ = pred_T.detach().cpu().numpy()
@@ -343,11 +347,18 @@ def scene_reconstruction(
         # 3. 从每个c2w矩阵中提取R和T
         for i in range(n):
             c2w = selected_c2w[i]
-            R_array[i] = c2w[:3, :3]  # 提取3x3旋转矩阵
-            T_array[i] = c2w[:3, 3]   # 提取3x1平移向量
+            # 提取c2w的旋转矩阵和平移向量
+            R_c2w = c2w[:3, :3]
+            T_c2w = c2w[:3, 3]
+            
+            # 转换为w2c
+            R_w2c = R_c2w.T  # 旋转矩阵转置
+            T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            
+            R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+            T_array[i] = T_w2c  # 存储w2c的平移向量
         # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
         pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
-        pred_R = torch.transpose(pred_R, 2, 1).cuda()  # test 0820
         pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
         # ---------------结束-----------------
 
@@ -364,11 +375,18 @@ def scene_reconstruction(
         # 3. 从每个c2w矩阵中提取R和T
         for i in range(n):
             c2w = selected_c2w[i]
-            R_array[i] = c2w[:3, :3]  # 提取3x3旋转矩阵
-            T_array[i] = c2w[:3, 3]   # 提取3x1平移向量
+            # 提取c2w的旋转矩阵和平移向量
+            R_c2w = c2w[:3, :3]
+            T_c2w = c2w[:3, 3]
+            
+            # 转换为w2c
+            R_w2c = R_c2w.T  # 旋转矩阵转置
+            T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            
+            R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+            T_array[i] = T_w2c  # 存储w2c的平移向量
         # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
         p_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
-        p_pred_R = torch.transpose(p_pred_R, 2, 1).cuda()  # test 0820
         p_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
         # ---------------结束-----------------
 
@@ -385,11 +403,18 @@ def scene_reconstruction(
         # 3. 从每个c2w矩阵中提取R和T
         for i in range(n):
             c2w = selected_c2w[i]
-            R_array[i] = c2w[:3, :3]  # 提取3x3旋转矩阵
-            T_array[i] = c2w[:3, 3]   # 提取3x1平移向量
+            # 提取c2w的旋转矩阵和平移向量
+            R_c2w = c2w[:3, :3]
+            T_c2w = c2w[:3, 3]
+            
+            # 转换为w2c
+            R_w2c = R_c2w.T  # 旋转矩阵转置
+            T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            
+            R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+            T_array[i] = T_w2c  # 存储w2c的平移向量
         # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
         n_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
-        n_pred_R = torch.transpose(n_pred_R, 2, 1).cuda()  # test 0820
         n_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
         # ---------------结束-----------------
 
