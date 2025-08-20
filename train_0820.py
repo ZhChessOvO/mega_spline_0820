@@ -153,6 +153,7 @@ def scene_reconstruction(
 
                 # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
                 pred_R = torch.from_numpy(R_matrix).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
+                pred_R = torch.transpose(pred_R, 2, 1).cuda()  # test 0820
                 pred_T = torch.from_numpy(T_vector).unsqueeze(0).cuda()  # 形状变为 [1, 3]
 
                 R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
@@ -346,6 +347,7 @@ def scene_reconstruction(
             T_array[i] = c2w[:3, 3]   # 提取3x1平移向量
         # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
         pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        pred_R = torch.transpose(pred_R, 2, 1).cuda()  # test 0820
         pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
         # ---------------结束-----------------
 
@@ -366,6 +368,7 @@ def scene_reconstruction(
             T_array[i] = c2w[:3, 3]   # 提取3x1平移向量
         # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
         p_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        p_pred_R = torch.transpose(p_pred_R, 2, 1).cuda()  # test 0820
         p_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
         # ---------------结束-----------------
 
@@ -386,6 +389,7 @@ def scene_reconstruction(
             T_array[i] = c2w[:3, 3]   # 提取3x1平移向量
         # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
         n_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        n_pred_R = torch.transpose(n_pred_R, 2, 1).cuda()  # test 0820
         n_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
         # ---------------结束-----------------
 
