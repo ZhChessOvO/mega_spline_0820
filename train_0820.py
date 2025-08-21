@@ -232,10 +232,12 @@ def scene_reconstruction(
             all_ids = list(range(len(viewpoint_stack)))
             all_ids.remove(id)
             
+            # 从前半部分随机选择prev视角
             prev_id = all_ids.pop(randint(0, (len(all_ids) - 1) // 2))
             prev_viewpoint_cams.append(viewpoint_stack[prev_id])
             prev_viewpoint_ids.append(prev_id)  # 此处修改
 
+            # 从后半部分随机选择next视角
             next_id = all_ids.pop(randint((len(all_ids) - 1) // 2, len(all_ids) - 1))
             next_viewpoint_cams.append(viewpoint_stack[next_id])
             next_viewpoint_ids.append(next_id)  # 此处修改
