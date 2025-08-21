@@ -170,10 +170,32 @@ def scene_reconstruction(
                     dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy(),
                 )
 
-            for view_id in range(len(my_test_cams)):  # TODO: 现在是直接取第一个train cam作为所有的test cam（nvidia特性），要改为单独设置
+            for view_id in range(len(my_test_cams)):  # TODO: （已修改）现在是直接取第一个train cam作为所有的test cam（nvidia特性），要改为单独设置
+                test_c2w_matrix = test_c2w[view_id]
+                # 提取c2w的旋转矩阵R和平移向量T
+                R_c2w = test_c2w_matrix[:3, :3]  # 相机到世界的旋转矩阵
+                T_c2w = test_c2w_matrix[:3, 3]   # 相机到世界的平移向量（相机原点在世界坐标系中的位置）
+                
+                # 将c2w转换为w2c（世界到相机）
+                # 1. 旋转矩阵：w2c的旋转 = c2w旋转的转置（正交矩阵性质）
+                R_w2c = R_c2w.T
+                # 2. 平移向量：w2c的平移 = - (w2c旋转矩阵 × c2w平移向量)
+                T_w2c = -np.dot(R_w2c, T_c2w)
+
+                # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
+                pred_R = torch.from_numpy(R_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
+                pred_T = torch.from_numpy(T_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3]
+
+                R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
+                t_ = pred_T.detach().cpu().numpy()
+
                 my_test_cams[view_id].update_cam(
-                    viewpoint_stack[0].R, viewpoint_stack[0].T, local_viewdirs, batch_shape, viewpoint_stack[0].focal
+                    R_[0], t_[0], local_viewdirs, batch_shape, viewpoint_stack[0].focal
                 )
+
+                # my_test_cams[view_id].update_cam(
+                #     viewpoint_stack[0].R, viewpoint_stack[0].T, local_viewdirs, batch_shape, viewpoint_stack[0].focal
+                # )
     else:  # warm 或 static fine 阶段
         pixels = get_pixels(
             scene.train_camera.dataset[0].metadata.image_size_x,
@@ -930,15 +952,39 @@ def scene_reconstruction(
                     / dyn_gaussians._posenet.instance_scale_list[0].detach(),
                 )
 
-                if scene.dataset_type == "nvidia":
+                if scene.dataset_type == "nvidia": # 这里进行了同line173的修改
+                    
                     for view_id in range(len(my_test_cams)):
+                        test_c2w_matrix = test_c2w[view_id]
+                        # 提取c2w的旋转矩阵R和平移向量T
+                        R_c2w = test_c2w_matrix[:3, :3]  # 相机到世界的旋转矩阵
+                        T_c2w = test_c2w_matrix[:3, 3]   # 相机到世界的平移向量（相机原点在世界坐标系中的位置）
+                        
+                        # 将c2w转换为w2c（世界到相机）
+                        # 1. 旋转矩阵：w2c的旋转 = c2w旋转的转置（正交矩阵性质）
+                        R_w2c = R_c2w.T
+                        # 2. 平移向量：w2c的平移 = - (w2c旋转矩阵 × c2w平移向量)
+                        T_w2c = -np.dot(R_w2c, T_c2w)
+
+                        # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
+                        pred_R = torch.from_numpy(R_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
+                        pred_T = torch.from_numpy(T_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3]
+
+                        R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
+                        t_ = pred_T.detach().cpu().numpy()
+
                         my_test_cams[view_id].update_cam(
-                            viewpoint_stack[0].R,
-                            viewpoint_stack[0].T,
-                            local_viewdirs,
-                            batch_shape,
-                            viewpoint_stack[0].focal,
+                            R_[0], t_[0], local_viewdirs, batch_shape, viewpoint_stack[0].focal
                         )
+
+                    # for view_id in range(len(my_test_cams)):
+                    #     my_test_cams[view_id].update_cam(
+                    #         viewpoint_stack[0].R,
+                    #         viewpoint_stack[0].T,
+                    #         local_viewdirs,
+                    #         batch_shape,
+                    #         viewpoint_stack[0].focal,
+                    #     )
                 else:  # TODO：未添加不是nvidia的情况，需要分别update_cam而不是全部用train[0]替代
                     raise NotImplementedError
 
