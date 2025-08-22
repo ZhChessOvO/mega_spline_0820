@@ -1,7 +1,7 @@
 OptimizationParams = dict(
     iterations=25_000,
-    coarse_batch_size=1,
-    fine_batch_size=1,
+    coarse_batch_size=6,
+    fine_batch_size=6,
     coarse_iterations=5_000,
     static_iterations=5_000,
     densify_from_iter=500,
