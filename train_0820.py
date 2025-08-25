@@ -116,7 +116,7 @@ def scene_reconstruction(
 
     # 在这里读入megasam的相机位姿（c2w），两个list，每个包含多个4*4 np_array
 
-    train_c2w, test_c2w = load_megasam_c2w("/home/czh/code/mega-sam/outputs_cvd/Balloon2_sgd_cvd_hr.npz",12,12)
+    train_c2w, test_c2w = load_megasam_c2w("/home/czh/code/mega-sam/outputs_cvd/Balloon1_sgd_cvd_hr.npz",12,12)
 
     if stage == "fine":
         pixels = get_pixels(
