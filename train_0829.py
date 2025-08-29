@@ -32,6 +32,8 @@ from utils.main_utils import get_gs_mask, get_pixels, get_normals, error_to_prob
 from utils.scene_utils import render_training_image
 from utils.timer import Timer
 
+from load_megasam import load_megasam_c2w
+
 try:
     from torch.utils.tensorboard import SummaryWriter
 
@@ -57,6 +59,7 @@ def scene_reconstruction(
     tb_writer,
     train_iter,
     timer,
+    expname,
 ):
     flag_d = 0
     flag_s = 0
@@ -88,7 +91,7 @@ def scene_reconstruction(
 
     viewpoint_stack = None
     viewpoint_stack_ids = []
-    test_cams = scene.getTestCameras()
+    test_cams = scene.getTestCameras()  # 最开始直接读进来是数量为图像数量的默认cam，还会后续update
     train_cams = scene.getTrainCameras()
     my_test_cams = [i for i in test_cams]  # Large CPU usage
     viewpoint_stack = [i for i in train_cams]  # Large CPU usage
@@ -112,7 +115,15 @@ def scene_reconstruction(
 
     mask_dice_loss = BinaryDiceLoss(from_logits=False)
 
-    if stage == "fine":
+    # 在这里读入megasam的相机位姿（c2w），两个list，每个包含多个4*4 np_array
+
+    # train_c2w, test_c2w = load_megasam_c2w("/home/czh/code/mega-sam/outputs_cvd/Playground_sgd_cvd_hr.npz",12,0)
+    # train_c2w, test_c2w = load_megasam_c2w(f"/home/czh/code/mega-sam/outputs_cvd/{expname}_sgd_cvd_hr.npz", 12, 0)
+    megasam_path = f"/home/czh/code/mega-sam/outputs_cvd/{expname}_sgd_cvd_hr.npz"
+    print(f"Loading megasam camera poses from: {megasam_path}")  # 输出加载路径
+    train_c2w, test_c2w = load_megasam_c2w(megasam_path, 12, 0)
+
+    if stage == "fine" or stage == "fine_static":  # 此处有修改，除了warm都要换掉初始cam pose
         pixels = get_pixels(
             scene.train_camera.dataset[0].metadata.image_size_x,
             scene.train_camera.dataset[0].metadata.image_size_y,
@@ -122,6 +133,8 @@ def scene_reconstruction(
             raise ValueError("The last dimension of pixels must be 2.")
         batch_shape = pixels.shape[:-1]
         pixels = np.reshape(pixels, (-1, 2))
+
+        # 这里是把像素坐标归一化成相机坐标系的坐标，除以posenet提供的焦距来进行
         y = (
             pixels[..., 1] - scene.train_camera.dataset[0].metadata.principal_point_y
         ) / dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy()
@@ -131,14 +144,30 @@ def scene_reconstruction(
         viewdirs = np.stack([x, y, np.ones_like(x)], axis=-1)
         local_viewdirs = viewdirs / np.linalg.norm(viewdirs, axis=-1, keepdims=True)
 
-        # update viewpoint_stack
+        # update viewpoint_stack，这里是fine阶段从posenet读取cam，0821修改为static fine也从这里读
         with torch.no_grad():
-            for cam in viewpoint_stack:
-                time_in = torch.tensor(cam.time).float().cuda()
-                pred_R, pred_T = dyn_gaussians._posenet(time_in.view(1, 1))
+            for cam_index in range(len(viewpoint_stack)):
+                # time_in = torch.tensor(cam.time).float().cuda()
+                # pred_R, pred_T = dyn_gaussians._posenet(time_in.view(1, 1))
+
+                c2w_matrix = train_c2w[cam_index]
+                # 提取c2w的旋转矩阵R和平移向量T
+                R_c2w = c2w_matrix[:3, :3]  # 相机到世界的旋转矩阵
+                T_c2w = c2w_matrix[:3, 3]   # 相机到世界的平移向量（相机原点在世界坐标系中的位置）
+                
+                # 将c2w转换为w2c（世界到相机）
+                # 1. 旋转矩阵：w2c的旋转 = c2w旋转的转置（正交矩阵性质）
+                R_w2c = R_c2w.T
+                # 2. 平移向量：w2c的平移 = - (w2c旋转矩阵 × c2w平移向量)
+                T_w2c = -np.dot(R_w2c, T_c2w)
+
+                # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
+                pred_R = torch.from_numpy(R_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
+                pred_T = torch.from_numpy(T_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3]
+
                 R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
                 t_ = pred_T.detach().cpu().numpy()
-                cam.update_cam(
+                viewpoint_stack[cam_index].update_cam(
                     R_[0],
                     t_[0],
                     local_viewdirs,
@@ -146,11 +175,33 @@ def scene_reconstruction(
                     dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy(),
                 )
 
-            for view_id in range(len(my_test_cams)):
+            for view_id in range(len(my_test_cams)):  # TODO: （已修改）和源代码保持一致，即取train[0],只能在nvidia数据集上运行
+                # test_c2w_matrix = test_c2w[view_id]
+                # # 提取c2w的旋转矩阵R和平移向量T
+                # R_c2w = test_c2w_matrix[:3, :3]  # 相机到世界的旋转矩阵
+                # T_c2w = test_c2w_matrix[:3, 3]   # 相机到世界的平移向量（相机原点在世界坐标系中的位置）
+                
+                # # 将c2w转换为w2c（世界到相机）
+                # # 1. 旋转矩阵：w2c的旋转 = c2w旋转的转置（正交矩阵性质）
+                # R_w2c = R_c2w.T
+                # # 2. 平移向量：w2c的平移 = - (w2c旋转矩阵 × c2w平移向量)
+                # T_w2c = -np.dot(R_w2c, T_c2w)
+
+                # # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
+                # pred_R = torch.from_numpy(R_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
+                # pred_T = torch.from_numpy(T_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3]
+
+                # R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
+                # t_ = pred_T.detach().cpu().numpy()
+
+                # my_test_cams[view_id].update_cam(
+                #     R_[0], t_[0], local_viewdirs, batch_shape, viewpoint_stack[0].focal
+                # )
+
                 my_test_cams[view_id].update_cam(
                     viewpoint_stack[0].R, viewpoint_stack[0].T, local_viewdirs, batch_shape, viewpoint_stack[0].focal
                 )
-    else:
+    else:  # warm 或 static fine 阶段
         pixels = get_pixels(
             scene.train_camera.dataset[0].metadata.image_size_x,
             scene.train_camera.dataset[0].metadata.image_size_y,
@@ -160,6 +211,8 @@ def scene_reconstruction(
             raise ValueError("The last dimension of pixels must be 2.")
         batch_shape = pixels.shape[:-1]
         pixels = np.reshape(pixels, (-1, 2))
+
+        # 同line126, posenet提供焦距进行归一化
         y = (
             pixels[..., 1] - scene.train_camera.dataset[0].metadata.principal_point_y
         ) / dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy()
@@ -185,6 +238,11 @@ def scene_reconstruction(
         prev_viewpoint_cams = []
         next_viewpoint_cams = []
 
+        # 用于记录索引
+        # viewpoint_ids = []
+        # prev_viewpoint_ids = []
+        # next_viewpoint_ids = []
+
         idx = 0
         while idx < batch_size:
             if not viewpoint_stack_ids:
@@ -194,16 +252,22 @@ def scene_reconstruction(
             
             id = viewpoint_stack_ids.pop(id)
             viewpoint_cams.append(viewpoint_stack[id])
+            # viewpoint_ids.append(id)  # 此处修改
             idx += 1
 
             # Sample 3 views for training (1 target 2 reference)
             all_ids = list(range(len(viewpoint_stack)))
             all_ids.remove(id)
             
+            # 从前半部分随机选择prev视角
             prev_id = all_ids.pop(randint(0, (len(all_ids) - 1) // 2))
             prev_viewpoint_cams.append(viewpoint_stack[prev_id])
+            # prev_viewpoint_ids.append(prev_id)  # 此处修改
+
+            # 从后半部分随机选择next视角
             next_id = all_ids.pop(randint((len(all_ids) - 1) // 2, len(all_ids) - 1))
             next_viewpoint_cams.append(viewpoint_stack[next_id])
+            # next_viewpoint_ids.append(next_id)  # 此处修改
 
         # Render
         if (iteration - 1) == debug_from:
@@ -293,18 +357,95 @@ def scene_reconstruction(
         ngt_depth_tensor = torch.cat(next_depths, 0)
         ndepth_in = ngt_depth_tensor.view(-1, 1)
 
+        # 获取目标图像、上一帧图像和下一帧图像的时序信息
         time_in = torch.stack(time, 0).view(len(viewpoint_cams), 1)
         prev_time_in = torch.stack(prev_time, 0).view(len(viewpoint_cams), 1)
         next_time_in = torch.stack(next_time, 0).view(len(viewpoint_cams), 1)
 
+        # 使用posenet提供相机的位姿和深度信息，TODO：已替换
         pred_R, pred_T, CVD = dyn_gaussians._posenet(time_in, depth=depth_in)
         gt_depth_tensor = CVD.detach()
+
+        # # ----此处开始pred_R和pred_T的替换----
+        # # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
+        # selected_c2w = [train_c2w[idx] for idx in viewpoint_ids]
+        # n = len(selected_c2w)  # 获取数量n
+        # # 2. 初始化R和T的数组
+        # R_array = np.zeros((n, 3, 3), dtype=np.float32)
+        # T_array = np.zeros((n, 3), dtype=np.float32)
+        # # 3. 从每个c2w矩阵中提取R和T
+        # for i in range(n):
+        #     c2w = selected_c2w[i]
+        #     # 提取c2w的旋转矩阵和平移向量
+        #     R_c2w = c2w[:3, :3]
+        #     T_c2w = c2w[:3, 3]
+            
+        #     # 转换为w2c
+        #     R_w2c = R_c2w.T  # 旋转矩阵转置
+        #     T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            
+        #     R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+        #     T_array[i] = T_w2c  # 存储w2c的平移向量
+        # # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
+        # pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        # pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
+        # # ---------------结束-----------------
 
         p_pred_R, p_pred_T, p_CVD = dyn_gaussians._posenet(prev_time_in, depth=pdepth_in)
         pgt_depth_tensor = p_CVD.detach()
 
+        # # ----此处开始p_pred_R和p_pred_T的替换----
+        # # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
+        # selected_c2w = [train_c2w[idx] for idx in prev_viewpoint_ids]
+        # n = len(selected_c2w)  # 获取数量n
+        # # 2. 初始化R和T的数组
+        # R_array = np.zeros((n, 3, 3), dtype=np.float32)
+        # T_array = np.zeros((n, 3), dtype=np.float32)
+        # # 3. 从每个c2w矩阵中提取R和T
+        # for i in range(n):
+        #     c2w = selected_c2w[i]
+        #     # 提取c2w的旋转矩阵和平移向量
+        #     R_c2w = c2w[:3, :3]
+        #     T_c2w = c2w[:3, 3]
+            
+        #     # 转换为w2c
+        #     R_w2c = R_c2w.T  # 旋转矩阵转置
+        #     T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            
+        #     R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+        #     T_array[i] = T_w2c  # 存储w2c的平移向量
+        # # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
+        # p_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        # p_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
+        # # ---------------结束-----------------
+
         n_pred_R, n_pred_T, n_CVD = dyn_gaussians._posenet(next_time_in, depth=ndepth_in)
         ngt_depth_tensor = n_CVD.detach()
+
+        # # ----此处开始n_pred_R和n_pred_T的替换----
+        # # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
+        # selected_c2w = [train_c2w[idx] for idx in next_viewpoint_ids]
+        # n = len(selected_c2w)  # 获取数量n
+        # # 2. 初始化R和T的数组
+        # R_array = np.zeros((n, 3, 3), dtype=np.float32)
+        # T_array = np.zeros((n, 3), dtype=np.float32)
+        # # 3. 从每个c2w矩阵中提取R和T
+        # for i in range(n):
+        #     c2w = selected_c2w[i]
+        #     # 提取c2w的旋转矩阵和平移向量
+        #     R_c2w = c2w[:3, :3]
+        #     T_c2w = c2w[:3, 3]
+            
+        #     # 转换为w2c
+        #     R_w2c = R_c2w.T  # 旋转矩阵转置
+        #     T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            
+        #     R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+        #     T_array[i] = T_w2c  # 存储w2c的平移向量
+        # # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
+        # n_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        # n_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
+        # # ---------------结束-----------------
 
         w2c_target = torch.cat((pred_R, pred_T[:, :, None]), -1)
         w2c_prev = torch.cat((p_pred_R, p_pred_T[:, :, None]), -1)
@@ -313,7 +454,7 @@ def scene_reconstruction(
         no_dyn_gs = dyn_gaussians.get_xyz.shape[0]
 
         with torch.no_grad():
-            # R is cam to world
+            # R is cam to world ？这里注释是否有误
             # t is world to cam
             R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
             t_ = pred_T.detach().cpu().numpy()
@@ -329,7 +470,9 @@ def scene_reconstruction(
             # nR_ = torch.transpose(n_pred_R, 2, 1)
             # nt_ = n_pred_T
 
+        # 为每个batch中的相机更新参数，这里的R T已经更新过
         for n_batch, viewpoint_cam in enumerate(viewpoint_cams):
+            # 构建相机内参矩阵K，用到了posenet
             camera_metadata = viewpoint_cam.metadata
             K = torch.zeros(3, 3).type_as(gt_image_tensor)
             K[0, 0] = dyn_gaussians._posenet.focal_bias.exp()
@@ -339,6 +482,7 @@ def scene_reconstruction(
             K[2, 2] = float(1)
             Ks.append(K[None])
 
+            # 更新相机参数，用到posenet提供焦距
             viewpoint_cam.update_cam(
                 R_[n_batch],
                 t_[n_batch],
@@ -384,7 +528,7 @@ def scene_reconstruction(
                     render_pkg = render(
                         viewpoint_cam, stat_gaussians, dyn_gaussians, background, get_static=True, get_dynamic=True
                     )
-                else:
+                else:  # fine static
                     with torch.no_grad():
                         render_p_pkg = render_static(
                             prev_viewpoint_cams[n_batch], stat_gaussians, dyn_gaussians, background, get_static=True
@@ -813,7 +957,31 @@ def scene_reconstruction(
                     / dyn_gaussians._posenet.instance_scale_list[0].detach(),
                 )
 
-                if scene.dataset_type == "nvidia":
+                if scene.dataset_type == "nvidia": # 这里进行了同line173的修改，0822已撤回
+                    
+                    # for view_id in range(len(my_test_cams)):
+                    #     test_c2w_matrix = test_c2w[view_id]
+                    #     # 提取c2w的旋转矩阵R和平移向量T
+                    #     R_c2w = test_c2w_matrix[:3, :3]  # 相机到世界的旋转矩阵
+                    #     T_c2w = test_c2w_matrix[:3, 3]   # 相机到世界的平移向量（相机原点在世界坐标系中的位置）
+                        
+                    #     # 将c2w转换为w2c（世界到相机）
+                    #     # 1. 旋转矩阵：w2c的旋转 = c2w旋转的转置（正交矩阵性质）
+                    #     R_w2c = R_c2w.T
+                    #     # 2. 平移向量：w2c的平移 = - (w2c旋转矩阵 × c2w平移向量)
+                    #     T_w2c = -np.dot(R_w2c, T_c2w)
+
+                    #     # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
+                    #     pred_R = torch.from_numpy(R_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
+                    #     pred_T = torch.from_numpy(T_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3]
+
+                    #     R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
+                    #     t_ = pred_T.detach().cpu().numpy()
+
+                    #     my_test_cams[view_id].update_cam(
+                    #         R_[0], t_[0], local_viewdirs, batch_shape, viewpoint_stack[0].focal
+                    #     )
+
                     for view_id in range(len(my_test_cams)):
                         my_test_cams[view_id].update_cam(
                             viewpoint_stack[0].R,
@@ -822,7 +990,7 @@ def scene_reconstruction(
                             batch_shape,
                             viewpoint_stack[0].focal,
                         )
-                else:
+                else:  # TODO：未添加不是nvidia的情况，需要分别update_cam而不是全部用train[0]替代
                     raise NotImplementedError
 
                 test_psnr, cur_iter = training_report(
@@ -939,7 +1107,7 @@ def scene_reconstruction(
                 time_in = torch.tensor(viewpoint_stack[IDX].time).float().cuda()
                 time_in = time_in.view(1, 1)
 
-                # Get extrinsics and depth
+                # Get extrinsics and depth，warm阶段让他用posenet，后面的阶段会替换掉外参
                 pred_R, pred_T, CVD = dyn_gaussians._posenet(time_in, depth=depth_in)
 
                 K_tensor = torch.zeros(1, 3, 3).type_as(image_tensor)
@@ -1172,6 +1340,7 @@ def training(
         tb_writer,
         opt.coarse_iterations,
         timer,
+        expname,
     )
     scene.cameras_extent = 1
     stat_gaussians.create_from_pcd(pcd=stat_pc, spatial_lr_scale=5, time_line=0)
@@ -1194,6 +1363,7 @@ def training(
         tb_writer,
         opt.coarse_iterations,
         timer,
+        expname,
     )
     
     BEST_PSNR, BEST_ITER = scene_reconstruction(
@@ -1213,6 +1383,7 @@ def training(
         tb_writer,
         opt.iterations,
         timer,
+        expname,
     )
 
     return BEST_PSNR, BEST_ITER
@@ -1222,7 +1393,7 @@ def prepare_output_and_logger(expname):
     if not args.model_path:
         unique_str = expname
 
-        args.model_path = os.path.join("/share/czh/splinegs_0828/", unique_str)
+        args.model_path = os.path.join("/share/czh/splinegs_0829/", unique_str)
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
     os.makedirs(args.model_path, exist_ok=True)

@@ -4,9 +4,18 @@
 follow [splineGS](https://github.com/KAIST-VICLab/SplineGS)
 
 ## train
+
+已在train_0829.py加入自动根据expname补全npz_path
+
 run
 ```
-python train_0822.py -s /share/czh/nvidia_rodynrf/Balloon2/ --expname "Balloon2" --configs arguments/nvidia_rodynrf/Balloon2.py
+python train_0829.py -s /share/czh/nvidia_rodynrf/Balloon1/ --expname "Balloon1" --configs arguments/nvidia_rodynrf/Balloon1.py
+python train_0829.py -s /share/czh/nvidia_rodynrf/Balloon2/ --expname "Balloon2" --configs arguments/nvidia_rodynrf/Balloon2.py
+python train_0829.py -s /share/czh/nvidia_rodynrf/Playground/ --expname "Playground" --configs arguments/nvidia_rodynrf/Playground.py
+python train_0829.py -s /share/czh/nvidia_rodynrf/Jumping/ --expname "Jumping" --configs arguments/nvidia_rodynrf/Jumping.py
+python train_0829.py -s /share/czh/nvidia_rodynrf/Truck/ --expname "Truck" --configs arguments/nvidia_rodynrf/Truck.py
+python train_0829.py -s /share/czh/nvidia_rodynrf/Skating/ --expname "Skating" --configs arguments/nvidia_rodynrf/Skating.py
+python train_0829.py -s /share/czh/nvidia_rodynrf/Umbrella/ --expname "Umbrella" --configs arguments/nvidia_rodynrf/Umbrella.py
 ```
 
 # reconstruct on stereo 4d dataset
@@ -19,7 +28,7 @@ https://github.com/vye16/shape-of-motion/blob/main/preproc/README.md
 
 ## megasam部分
 
-`（mega_sam) bash mono_depth_scripts/run_mono-depth_demo.sh `（有时需要魔法上网在线验证）
+`（mega_sam) bash mono_depth_scripts/run_mono-depth_demo.sh `（建议开HF镜像）
 
 `(sam2) bash tools/evaluate_demo.sh`
 
@@ -30,12 +39,6 @@ https://github.com/vye16/shape-of-motion/blob/main/preproc/README.md
 `/home/czh/code/mega-sam/outputs_cvd/ski_sgd_cvd_hr.npz`
 
 ## SplineGS部分
-
-**(和train_stereo.py和config有关的修改已在代码中完成，请直接运行preprocess和train)**
-
-新建train_stereo.py（复制自train_0820.py）
-
-注释掉line364-line443 cam update部分的替换
 
 替换line119的npz路径
 
