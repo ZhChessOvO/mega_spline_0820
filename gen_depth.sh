@@ -1,5 +1,5 @@
-# python gen_depth.py --image_dir /share/czh/nvidia_rodynrf/Balloon1/images_2  --out_dir /share/czh/nvidia_rodynrf/Balloon1/uni_depth
-# python gen_depth.py --image_dir /share/czh/nvidia_rodynrf/Balloon1/images_2  --out_dir /share/czh/nvidia_rodynrf/Balloon1/depth_anything --depth_type disp
+python gen_depth.py --image_dir /share/czh/nvidia_rodynrf/Balloon1/images_2  --out_dir /share/czh/nvidia_rodynrf/Balloon1/uni_depth
+python gen_depth.py --image_dir /share/czh/nvidia_rodynrf/Balloon1/images_2  --out_dir /share/czh/nvidia_rodynrf/Balloon1/depth_anything --depth_type disp
 # python gen_depth.py --image_dir /share/czh/nvidia_rodynrf/Balloon2/images_2  --out_dir /share/czh/nvidia_rodynrf/Balloon2/uni_depth
 # python gen_depth.py --image_dir /share/czh/nvidia_rodynrf/Balloon2/images_2  --out_dir /share/czh/nvidia_rodynrf/Balloon2/depth_anything --depth_type disp
 # python gen_depth.py --image_dir /share/czh/nvidia_rodynrf/Jumping/images_2  --out_dir /share/czh/nvidia_rodynrf/Jumping/uni_depth
