@@ -70,7 +70,7 @@ def visualize_npz(npz_path, output_dir):
 
 if __name__ == "__main__":
     # NPZ文件路径
-    npz_file_path = "/share/czh/already_used/nvidia_megasam_preprocess/UniDepth/Balloon1/000.npz"
+    npz_file_path = "/home/czh/code/mega-sam/outputs_cvd/block_sgd_cvd_hr.npz"
     
     # 输出目录
     output_directory = "image"

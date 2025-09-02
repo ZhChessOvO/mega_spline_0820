@@ -22,9 +22,24 @@ DEFAULT_DEVICE = (
 
 def read_video(folder_path):
     frame_paths = sorted(glob.glob(os.path.join(folder_path, "*")))
-    video = np.concatenate([np.array(Image.open(frame_path)).transpose(2, 0, 1)[None, None] for frame_path in frame_paths], axis=1)
+    frames = []
+    for frame_path in frame_paths:
+        # 打开图像
+        img = Image.open(frame_path)
+        # 如果是RGBA格式，转换为RGB
+        if img.mode == 'RGBA':
+            img = img.convert('RGB')
+        # 转换为数组并调整形状
+        frame = np.array(img).transpose(2, 0, 1)[None, None]
+        frames.append(frame)
+    # 拼接所有帧
+    video = np.concatenate(frames, axis=1)
     video = torch.from_numpy(video).float()
     return video
+    # frame_paths = sorted(glob.glob(os.path.join(folder_path, "*")))
+    # video = np.concatenate([np.array(Image.open(frame_path)).transpose(2, 0, 1)[None, None] for frame_path in frame_paths], axis=1)
+    # video = torch.from_numpy(video).float()
+    # return video
 
 def read_mask(folder_path):
     frame_paths = sorted(glob.glob(os.path.join(folder_path, "*")))
