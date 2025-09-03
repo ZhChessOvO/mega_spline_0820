@@ -1198,7 +1198,7 @@ def scene_reconstruction(
             dyn_tracklet = torch.gather(
                 tracklet[None].expand(dyn_coord_2d.shape[0], -1, -1, -1),
                 2,
-                dyn_tracklet_index[:, None, None, None].expand(-1, 12, -1, 2),
+                dyn_tracklet_index[:, None, None, None].expand(-1, 60, -1, 2),
             ).squeeze(
                 2
             )  # N_dyn_pts, N_time, 2
