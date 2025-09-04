@@ -8,7 +8,7 @@ from PIL import Image
 os.makedirs('./image', exist_ok=True)
 
 # 加载NPZ文件
-npz_path = '/home/czh/code/mega-sam/outputs_cvd/block_sgd_cvd_hr.npz'
+npz_path = '/home/czh/code/mega-sam/outputs_cvd/Balloon1_sgd_cvd_hr.npz'
 data = np.load(npz_path)
 
 # 提取深度图数据
@@ -16,7 +16,7 @@ depth_maps = data['depths']  # 形状为(120, 512, 384)
 print(f"加载的深度图形状: {depth_maps.shape}")
 
 # 每10张选取一张，共12张
-selected_indices = range(0, 120, 10)
+selected_indices = range(0, 12)
 selected_maps = [depth_maps[i] for i in selected_indices]
 print(f"选中的深度图数量: {len(selected_maps)}")
 
@@ -41,7 +41,7 @@ cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
 fig.colorbar(im, cax=cbar_ax)
 
 # 保存合并后的大图
-output_path = './image/depth_maps_combined.png'
+output_path = './image/depth_maps_combined2.png'
 plt.savefig(output_path, dpi=300, bbox_inches='tight')
 plt.close()
 

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import cv2
 
 # 1. 读取 .npy 文件（关键：深度图通常为单通道，形状可能是 (H, W) 或 (H, W, 1)）
-file_path = "/share/czh/dycheck_megasam/depth-anything/block/0_00000.npy"
+file_path = "/share/czh/nvidia_megasam/Playground/depth_anything/000.npy"
 depth_data = np.load(file_path)
 
 # 2. 预处理：若有多余通道，压缩为单通道（如 (H,W,1) → (H,W)）
