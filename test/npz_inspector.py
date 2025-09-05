@@ -1,7 +1,7 @@
 import numpy as np
 
 # 定义NPZ文件路径
-file_path = "/share/czh/already_used/mega-sam/outputs_cvd_dycheck/block_sgd_cvd_hr.npz"
+file_path = "/home/czh/code/mega-sam/outputs_cvd/Skating_sgd_cvd_hr.npz"
 
 try:
     # 加载NPZ文件
