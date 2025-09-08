@@ -176,61 +176,15 @@ def scene_reconstruction(
                 )
 
             for view_id in range(len(my_test_cams)):  # 修改为对应的train cam向右平移7cm
-                # 修改测试相机部分：每个测试相机对应训练相机并相对自身向右移动7cm
-                # 确保测试相机数量不超过训练相机
-                if view_id < len(viewpoint_stack):
-                    # 获取对应训练相机的w2c位姿
-                    w2c_R = viewpoint_stack[view_id].R  # 世界到相机的旋转矩阵
-                    w2c_T = viewpoint_stack[view_id].T  # 世界原点在相机坐标系中的位置
-                    
-                    # 1. 将w2c转换为c2w（相机在世界中的位姿）
-                    c2w_R = w2c_R.T  # 相机到世界的旋转矩阵（w2c旋转的转置）
-                    c2w_T = -np.dot(c2w_R, w2c_T)  # 相机在世界坐标系中的位置
-                    
-                    # 2. 计算相机自身X轴（向右方向）在世界坐标系中的向量
-                    # 相机局部X轴（右方向）在世界坐标系中的表示是c2w旋转矩阵的第0列
-                    right_direction = c2w_R[:, 0]  # 单位向量
-                    
-                    # 3. 沿相机自身右方向移动7cm（0.07米）
-                    c2w_T += 0.01 * right_direction  # 在世界坐标系中应用平移
-                    
-                    # 4. 将修改后的c2w转换回w2c，用于更新相机
-                    new_w2c_R = w2c_R  # 旋转矩阵不变
-                    new_w2c_T = -np.dot(w2c_R, c2w_T)  # 计算新的平移向量
-                    
-                    # 更新测试相机位姿
-                    my_test_cams[view_id].update_cam(
-                        new_w2c_R, 
-                        new_w2c_T, 
-                        local_viewdirs, 
-                        batch_shape, 
-                        viewpoint_stack[view_id].focal
-                    )
-                else:
-                    # 如果测试相机多于训练相机，使用最后一个训练相机的位姿并平移
-                    last_idx = len(viewpoint_stack) - 1
-                    w2c_R = viewpoint_stack[last_idx].R
-                    w2c_T = viewpoint_stack[last_idx].T
-                    
-                    # 同样的转换和平移过程
-                    c2w_R = w2c_R.T
-                    c2w_T = -np.dot(c2w_R, w2c_T)
-                    right_direction = c2w_R[:, 0]
-                    c2w_T += 0.01 * right_direction
-                    new_w2c_R = w2c_R
-                    new_w2c_T = -np.dot(w2c_R, c2w_T)
-                    
-                    my_test_cams[view_id].update_cam(
-                        new_w2c_R, 
-                        new_w2c_T, 
-                        local_viewdirs, 
-                        batch_shape, 
-                        viewpoint_stack[last_idx].focal
-                    )
-                
-                # my_test_cams[view_id].update_cam(
-                #     viewpoint_stack[0].R, viewpoint_stack[0].T, local_viewdirs, batch_shape, viewpoint_stack[0].focal
-                # )
+                test_T = viewpoint_stack[view_id].T
+                test_T[0] -= 0.005
+                my_test_cams[view_id].update_cam(
+                    viewpoint_stack[view_id].R,
+                    test_T,
+                    local_viewdirs,
+                    batch_shape,
+                    dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy(),
+                )
 
     else:  # warm 或 static fine 阶段
         pixels = get_pixels(
@@ -270,9 +224,9 @@ def scene_reconstruction(
         next_viewpoint_cams = []
 
         # 用于记录索引
-        # viewpoint_ids = []
-        # prev_viewpoint_ids = []
-        # next_viewpoint_ids = []
+        viewpoint_ids = []
+        prev_viewpoint_ids = []
+        next_viewpoint_ids = []
 
         idx = 0
         while idx < batch_size:
@@ -283,7 +237,7 @@ def scene_reconstruction(
             
             id = viewpoint_stack_ids.pop(id)
             viewpoint_cams.append(viewpoint_stack[id])
-            # viewpoint_ids.append(id)  # 此处修改
+            viewpoint_ids.append(id)  # 此处修改
             idx += 1
 
             # Sample 3 views for training (1 target 2 reference)
@@ -293,12 +247,12 @@ def scene_reconstruction(
             # 从前半部分随机选择prev视角
             prev_id = all_ids.pop(randint(0, (len(all_ids) - 1) // 2))
             prev_viewpoint_cams.append(viewpoint_stack[prev_id])
-            # prev_viewpoint_ids.append(prev_id)  # 此处修改
+            prev_viewpoint_ids.append(prev_id)  # 此处修改
 
             # 从后半部分随机选择next视角
             next_id = all_ids.pop(randint((len(all_ids) - 1) // 2, len(all_ids) - 1))
             next_viewpoint_cams.append(viewpoint_stack[next_id])
-            # next_viewpoint_ids.append(next_id)  # 此处修改
+            next_viewpoint_ids.append(next_id)  # 此处修改
 
         # Render
         if (iteration - 1) == debug_from:
@@ -397,86 +351,86 @@ def scene_reconstruction(
         pred_R, pred_T, CVD = dyn_gaussians._posenet(time_in, depth=depth_in)
         gt_depth_tensor = CVD.detach()
 
-        # # ----此处开始pred_R和pred_T的替换----
-        # # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
-        # selected_c2w = [train_c2w[idx] for idx in viewpoint_ids]
-        # n = len(selected_c2w)  # 获取数量n
-        # # 2. 初始化R和T的数组
-        # R_array = np.zeros((n, 3, 3), dtype=np.float32)
-        # T_array = np.zeros((n, 3), dtype=np.float32)
-        # # 3. 从每个c2w矩阵中提取R和T
-        # for i in range(n):
-        #     c2w = selected_c2w[i]
-        #     # 提取c2w的旋转矩阵和平移向量
-        #     R_c2w = c2w[:3, :3]
-        #     T_c2w = c2w[:3, 3]
+        # ----此处开始pred_R和pred_T的替换----
+        # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
+        selected_c2w = [train_c2w[idx] for idx in viewpoint_ids]
+        n = len(selected_c2w)  # 获取数量n
+        # 2. 初始化R和T的数组
+        R_array = np.zeros((n, 3, 3), dtype=np.float32)
+        T_array = np.zeros((n, 3), dtype=np.float32)
+        # 3. 从每个c2w矩阵中提取R和T
+        for i in range(n):
+            c2w = selected_c2w[i]
+            # 提取c2w的旋转矩阵和平移向量
+            R_c2w = c2w[:3, :3]
+            T_c2w = c2w[:3, 3]
             
-        #     # 转换为w2c
-        #     R_w2c = R_c2w.T  # 旋转矩阵转置
-        #     T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            # 转换为w2c
+            R_w2c = R_c2w.T  # 旋转矩阵转置
+            T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
             
-        #     R_array[i] = R_w2c  # 存储w2c的旋转矩阵
-        #     T_array[i] = T_w2c  # 存储w2c的平移向量
-        # # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
-        # pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
-        # pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
-        # # ---------------结束-----------------
+            R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+            T_array[i] = T_w2c  # 存储w2c的平移向量
+        # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
+        pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
+        # ---------------结束-----------------
 
         p_pred_R, p_pred_T, p_CVD = dyn_gaussians._posenet(prev_time_in, depth=pdepth_in)
         pgt_depth_tensor = p_CVD.detach()
 
-        # # ----此处开始p_pred_R和p_pred_T的替换----
-        # # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
-        # selected_c2w = [train_c2w[idx] for idx in prev_viewpoint_ids]
-        # n = len(selected_c2w)  # 获取数量n
-        # # 2. 初始化R和T的数组
-        # R_array = np.zeros((n, 3, 3), dtype=np.float32)
-        # T_array = np.zeros((n, 3), dtype=np.float32)
-        # # 3. 从每个c2w矩阵中提取R和T
-        # for i in range(n):
-        #     c2w = selected_c2w[i]
-        #     # 提取c2w的旋转矩阵和平移向量
-        #     R_c2w = c2w[:3, :3]
-        #     T_c2w = c2w[:3, 3]
+        # ----此处开始p_pred_R和p_pred_T的替换----
+        # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
+        selected_c2w = [train_c2w[idx] for idx in prev_viewpoint_ids]
+        n = len(selected_c2w)  # 获取数量n
+        # 2. 初始化R和T的数组
+        R_array = np.zeros((n, 3, 3), dtype=np.float32)
+        T_array = np.zeros((n, 3), dtype=np.float32)
+        # 3. 从每个c2w矩阵中提取R和T
+        for i in range(n):
+            c2w = selected_c2w[i]
+            # 提取c2w的旋转矩阵和平移向量
+            R_c2w = c2w[:3, :3]
+            T_c2w = c2w[:3, 3]
             
-        #     # 转换为w2c
-        #     R_w2c = R_c2w.T  # 旋转矩阵转置
-        #     T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            # 转换为w2c
+            R_w2c = R_c2w.T  # 旋转矩阵转置
+            T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
             
-        #     R_array[i] = R_w2c  # 存储w2c的旋转矩阵
-        #     T_array[i] = T_w2c  # 存储w2c的平移向量
-        # # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
-        # p_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
-        # p_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
-        # # ---------------结束-----------------
+            R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+            T_array[i] = T_w2c  # 存储w2c的平移向量
+        # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
+        p_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        p_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
+        # ---------------结束-----------------
 
         n_pred_R, n_pred_T, n_CVD = dyn_gaussians._posenet(next_time_in, depth=ndepth_in)
         ngt_depth_tensor = n_CVD.detach()
 
-        # # ----此处开始n_pred_R和n_pred_T的替换----
-        # # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
-        # selected_c2w = [train_c2w[idx] for idx in next_viewpoint_ids]
-        # n = len(selected_c2w)  # 获取数量n
-        # # 2. 初始化R和T的数组
-        # R_array = np.zeros((n, 3, 3), dtype=np.float32)
-        # T_array = np.zeros((n, 3), dtype=np.float32)
-        # # 3. 从每个c2w矩阵中提取R和T
-        # for i in range(n):
-        #     c2w = selected_c2w[i]
-        #     # 提取c2w的旋转矩阵和平移向量
-        #     R_c2w = c2w[:3, :3]
-        #     T_c2w = c2w[:3, 3]
+        # ----此处开始n_pred_R和n_pred_T的替换----
+        # 1. 根据viewpoint_ids的顺序提取对应的c2w矩阵
+        selected_c2w = [train_c2w[idx] for idx in next_viewpoint_ids]
+        n = len(selected_c2w)  # 获取数量n
+        # 2. 初始化R和T的数组
+        R_array = np.zeros((n, 3, 3), dtype=np.float32)
+        T_array = np.zeros((n, 3), dtype=np.float32)
+        # 3. 从每个c2w矩阵中提取R和T
+        for i in range(n):
+            c2w = selected_c2w[i]
+            # 提取c2w的旋转矩阵和平移向量
+            R_c2w = c2w[:3, :3]
+            T_c2w = c2w[:3, 3]
             
-        #     # 转换为w2c
-        #     R_w2c = R_c2w.T  # 旋转矩阵转置
-        #     T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
+            # 转换为w2c
+            R_w2c = R_c2w.T  # 旋转矩阵转置
+            T_w2c = -np.dot(R_w2c, T_c2w)  # 计算平移向量
             
-        #     R_array[i] = R_w2c  # 存储w2c的旋转矩阵
-        #     T_array[i] = T_w2c  # 存储w2c的平移向量
-        # # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
-        # n_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
-        # n_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
-        # # ---------------结束-----------------
+            R_array[i] = R_w2c  # 存储w2c的旋转矩阵
+            T_array[i] = T_w2c  # 存储w2c的平移向量
+        # 4. 转换为PyTorch张量并移动到GPU（与原代码保持一致）
+        n_pred_R = torch.from_numpy(R_array).cuda()  # 形状: [n, 3, 3]
+        n_pred_T = torch.from_numpy(T_array).cuda()  # 形状: [n, 3]
+        # ---------------结束-----------------
 
         w2c_target = torch.cat((pred_R, pred_T[:, :, None]), -1)
         w2c_prev = torch.cat((p_pred_R, p_pred_T[:, :, None]), -1)
@@ -990,58 +944,16 @@ def scene_reconstruction(
 
                 if scene.dataset_type == "nvidia": # 修改
                     
-                    for view_id in range(len(my_test_cams)):
-                        # 修改测试相机部分：每个测试相机对应训练相机并相对自身向右移动7cm
-                        # 确保测试相机数量不超过训练相机
-                        if view_id < len(viewpoint_stack):
-                            # 获取对应训练相机的w2c位姿
-                            w2c_R = viewpoint_stack[view_id].R  # 世界到相机的旋转矩阵
-                            w2c_T = viewpoint_stack[view_id].T  # 世界原点在相机坐标系中的位置
-                            
-                            # 1. 将w2c转换为c2w（相机在世界中的位姿）
-                            c2w_R = w2c_R.T  # 相机到世界的旋转矩阵（w2c旋转的转置）
-                            c2w_T = -np.dot(c2w_R, w2c_T)  # 相机在世界坐标系中的位置
-                            
-                            # 2. 计算相机自身X轴（向右方向）在世界坐标系中的向量
-                            # 相机局部X轴（右方向）在世界坐标系中的表示是c2w旋转矩阵的第0列
-                            right_direction = c2w_R[:, 0]  # 单位向量
-                            
-                            # 3. 沿相机自身右方向移动7cm（0.07米）
-                            c2w_T += 0.07 * right_direction  # 在世界坐标系中应用平移
-                            
-                            # 4. 将修改后的c2w转换回w2c，用于更新相机
-                            new_w2c_R = w2c_R  # 旋转矩阵不变
-                            new_w2c_T = -np.dot(w2c_R, c2w_T)  # 计算新的平移向量
-                            
-                            # 更新测试相机位姿
-                            my_test_cams[view_id].update_cam(
-                                new_w2c_R, 
-                                new_w2c_T, 
-                                local_viewdirs, 
-                                batch_shape, 
-                                viewpoint_stack[view_id].focal
-                            )
-                        else:
-                            # 如果测试相机多于训练相机，使用最后一个训练相机的位姿并平移
-                            last_idx = len(viewpoint_stack) - 1
-                            w2c_R = viewpoint_stack[last_idx].R
-                            w2c_T = viewpoint_stack[last_idx].T
-                            
-                            # 同样的转换和平移过程
-                            c2w_R = w2c_R.T
-                            c2w_T = -np.dot(c2w_R, w2c_T)
-                            right_direction = c2w_R[:, 0]
-                            c2w_T += 0.07 * right_direction
-                            new_w2c_R = w2c_R
-                            new_w2c_T = -np.dot(w2c_R, c2w_T)
-                            
-                            my_test_cams[view_id].update_cam(
-                                new_w2c_R, 
-                                new_w2c_T, 
-                                local_viewdirs, 
-                                batch_shape, 
-                                viewpoint_stack[last_idx].focal
-                            )
+                    test_T = viewpoint_stack[view_id].T
+                    test_T[0] -= 0.005
+                    my_test_cams[view_id].update_cam(
+                        viewpoint_stack[view_id].R,
+                        test_T,
+                        local_viewdirs,
+                        batch_shape,
+                        dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy(),
+                    )
+                        
 
                     # for view_id in range(len(my_test_cams)):
                     #     my_test_cams[view_id].update_cam(
@@ -1570,7 +1482,7 @@ if __name__ == "__main__":
         "--save_iterations",
         nargs="+",
         type=int,
-        default=[1000, 3000, 4000, 5000, 6000, 7_000, 9000, 10000, 12000, 14000, 15000, 20000],
+        default=[1000, 3000, 5000, 10000, 15000, 20000, 25000],
     )
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("-render_process", action="store_true")

@@ -8,7 +8,7 @@ from PIL import Image
 os.makedirs('./image', exist_ok=True)
 
 # 加载NPZ文件
-npz_path = '/home/czh/code/mega-sam/outputs_cvd/Balloon1_sgd_cvd_hr.npz'
+npz_path = '/home/czh/code/mega-sam/outputs_cvd/ski_sgd_cvd_hr.npz'
 data = np.load(npz_path)
 
 # 提取深度图数据
@@ -41,7 +41,7 @@ cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])
 fig.colorbar(im, cax=cbar_ax)
 
 # 保存合并后的大图
-output_path = './image/depth_maps_combined2.png'
+output_path = './image/depth_maps_combined_ski.png'
 plt.savefig(output_path, dpi=300, bbox_inches='tight')
 plt.close()
 

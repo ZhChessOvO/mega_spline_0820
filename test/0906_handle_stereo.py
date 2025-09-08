@@ -28,7 +28,7 @@ def process_folder(src_folder, target_folder, prefix):
                 if prefix == "train":
                     target_file_name = f"{str(idx).zfill(3)}.png"
                 else:
-                    target_file_name = f"v000_{str(idx).zfill(3)}.png"
+                    target_file_name = f"v000_t{str(idx).zfill(3)}.png"
                 # target_file_name = f"{prefix}_{str(idx).zfill(3)}.png"
                 target_file_path = os.path.join(target_folder, target_file_name)
                 img.save(target_file_path)

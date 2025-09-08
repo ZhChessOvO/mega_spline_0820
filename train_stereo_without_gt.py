@@ -176,61 +176,10 @@ def scene_reconstruction(
                 )
 
             for view_id in range(len(my_test_cams)):  # 修改为对应的train cam向右平移7cm
-                # 修改测试相机部分：每个测试相机对应训练相机并相对自身向右移动7cm
-                # 确保测试相机数量不超过训练相机
-                if view_id < len(viewpoint_stack):
-                    # 获取对应训练相机的w2c位姿
-                    w2c_R = viewpoint_stack[view_id].R  # 世界到相机的旋转矩阵
-                    w2c_T = viewpoint_stack[view_id].T  # 世界原点在相机坐标系中的位置
-                    
-                    # 1. 将w2c转换为c2w（相机在世界中的位姿）
-                    c2w_R = w2c_R.T  # 相机到世界的旋转矩阵（w2c旋转的转置）
-                    c2w_T = -np.dot(c2w_R, w2c_T)  # 相机在世界坐标系中的位置
-                    
-                    # 2. 计算相机自身X轴（向右方向）在世界坐标系中的向量
-                    # 相机局部X轴（右方向）在世界坐标系中的表示是c2w旋转矩阵的第0列
-                    right_direction = c2w_R[:, 0]  # 单位向量
-                    
-                    # 3. 沿相机自身右方向移动7cm（0.07米）
-                    c2w_T += 0.01 * right_direction  # 在世界坐标系中应用平移
-                    
-                    # 4. 将修改后的c2w转换回w2c，用于更新相机
-                    new_w2c_R = w2c_R  # 旋转矩阵不变
-                    new_w2c_T = -np.dot(w2c_R, c2w_T)  # 计算新的平移向量
-                    
-                    # 更新测试相机位姿
-                    my_test_cams[view_id].update_cam(
-                        new_w2c_R, 
-                        new_w2c_T, 
-                        local_viewdirs, 
-                        batch_shape, 
-                        viewpoint_stack[view_id].focal
-                    )
-                else:
-                    # 如果测试相机多于训练相机，使用最后一个训练相机的位姿并平移
-                    last_idx = len(viewpoint_stack) - 1
-                    w2c_R = viewpoint_stack[last_idx].R
-                    w2c_T = viewpoint_stack[last_idx].T
-                    
-                    # 同样的转换和平移过程
-                    c2w_R = w2c_R.T
-                    c2w_T = -np.dot(c2w_R, w2c_T)
-                    right_direction = c2w_R[:, 0]
-                    c2w_T += 0.01 * right_direction
-                    new_w2c_R = w2c_R
-                    new_w2c_T = -np.dot(w2c_R, c2w_T)
-                    
-                    my_test_cams[view_id].update_cam(
-                        new_w2c_R, 
-                        new_w2c_T, 
-                        local_viewdirs, 
-                        batch_shape, 
-                        viewpoint_stack[last_idx].focal
-                    )
                 
-                # my_test_cams[view_id].update_cam(
-                #     viewpoint_stack[0].R, viewpoint_stack[0].T, local_viewdirs, batch_shape, viewpoint_stack[0].focal
-                # )
+                my_test_cams[view_id].update_cam(
+                    viewpoint_stack[view_id].R, viewpoint_stack[view_id].T, local_viewdirs, batch_shape, viewpoint_stack[view_id].focal
+                )
 
     else:  # warm 或 static fine 阶段
         pixels = get_pixels(
@@ -989,68 +938,16 @@ def scene_reconstruction(
                 )
 
                 if scene.dataset_type == "nvidia": # 修改
-                    
-                    for view_id in range(len(my_test_cams)):
-                        # 修改测试相机部分：每个测试相机对应训练相机并相对自身向右移动7cm
-                        # 确保测试相机数量不超过训练相机
-                        if view_id < len(viewpoint_stack):
-                            # 获取对应训练相机的w2c位姿
-                            w2c_R = viewpoint_stack[view_id].R  # 世界到相机的旋转矩阵
-                            w2c_T = viewpoint_stack[view_id].T  # 世界原点在相机坐标系中的位置
-                            
-                            # 1. 将w2c转换为c2w（相机在世界中的位姿）
-                            c2w_R = w2c_R.T  # 相机到世界的旋转矩阵（w2c旋转的转置）
-                            c2w_T = -np.dot(c2w_R, w2c_T)  # 相机在世界坐标系中的位置
-                            
-                            # 2. 计算相机自身X轴（向右方向）在世界坐标系中的向量
-                            # 相机局部X轴（右方向）在世界坐标系中的表示是c2w旋转矩阵的第0列
-                            right_direction = c2w_R[:, 0]  # 单位向量
-                            
-                            # 3. 沿相机自身右方向移动7cm（0.07米）
-                            c2w_T += 0.07 * right_direction  # 在世界坐标系中应用平移
-                            
-                            # 4. 将修改后的c2w转换回w2c，用于更新相机
-                            new_w2c_R = w2c_R  # 旋转矩阵不变
-                            new_w2c_T = -np.dot(w2c_R, c2w_T)  # 计算新的平移向量
-                            
-                            # 更新测试相机位姿
-                            my_test_cams[view_id].update_cam(
-                                new_w2c_R, 
-                                new_w2c_T, 
-                                local_viewdirs, 
-                                batch_shape, 
-                                viewpoint_stack[view_id].focal
-                            )
-                        else:
-                            # 如果测试相机多于训练相机，使用最后一个训练相机的位姿并平移
-                            last_idx = len(viewpoint_stack) - 1
-                            w2c_R = viewpoint_stack[last_idx].R
-                            w2c_T = viewpoint_stack[last_idx].T
-                            
-                            # 同样的转换和平移过程
-                            c2w_R = w2c_R.T
-                            c2w_T = -np.dot(c2w_R, w2c_T)
-                            right_direction = c2w_R[:, 0]
-                            c2w_T += 0.07 * right_direction
-                            new_w2c_R = w2c_R
-                            new_w2c_T = -np.dot(w2c_R, c2w_T)
-                            
-                            my_test_cams[view_id].update_cam(
-                                new_w2c_R, 
-                                new_w2c_T, 
-                                local_viewdirs, 
-                                batch_shape, 
-                                viewpoint_stack[last_idx].focal
-                            )
 
-                    # for view_id in range(len(my_test_cams)):
-                    #     my_test_cams[view_id].update_cam(
-                    #         viewpoint_stack[0].R,
-                    #         viewpoint_stack[0].T,
-                    #         local_viewdirs,
-                    #         batch_shape,
-                    #         viewpoint_stack[0].focal,
-                    #     )
+                    for view_id in range(len(my_test_cams)):
+                        my_test_cams[view_id].update_cam(
+                            viewpoint_stack[view_id].R,
+                            viewpoint_stack[view_id].T,
+                            local_viewdirs,
+                            batch_shape,
+                            viewpoint_stack[view_id].focal,
+                        )
+
                 else:  # TODO：未添加不是nvidia的情况，需要分别update_cam而不是全部用train[0]替代
                     raise NotImplementedError
 
@@ -1454,7 +1351,7 @@ def prepare_output_and_logger(expname):
     if not args.model_path:
         unique_str = expname
 
-        args.model_path = os.path.join("/share/czh/splinegs_0908/", unique_str)
+        args.model_path = os.path.join("/share/czh/splinegs_0908_2/", unique_str)
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
     os.makedirs(args.model_path, exist_ok=True)

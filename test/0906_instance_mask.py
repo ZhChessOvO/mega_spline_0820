@@ -2,7 +2,7 @@ import os
 import shutil
 
 # 定义路径
-base_dir = "/share/czh/stereo4d/ski"
+base_dir = "/share/czh/stereo4d/pig"
 instance_mask_dir = os.path.join(base_dir, "instance_mask")
 motion_masks_dir = os.path.join(base_dir, "motion_masks")
 
