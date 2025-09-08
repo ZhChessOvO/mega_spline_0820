@@ -59,6 +59,7 @@ def scene_reconstruction(
     tb_writer,
     train_iter,
     timer,
+    expname,
 ):
     flag_d = 0
     flag_s = 0
@@ -116,9 +117,13 @@ def scene_reconstruction(
 
     # 在这里读入megasam的相机位姿（c2w），两个list，每个包含多个4*4 np_array
 
-    train_c2w, test_c2w = load_megasam_c2w("/home/czh/code/mega-sam/outputs_cvd/ski_sgd_cvd_hr.npz",12,12)
+    # train_c2w, test_c2w = load_megasam_c2w("/home/czh/code/mega-sam/outputs_cvd/Playground_sgd_cvd_hr.npz",12,0)
+    # train_c2w, test_c2w = load_megasam_c2w(f"/home/czh/code/mega-sam/outputs_cvd/{expname}_sgd_cvd_hr.npz", 12, 0)
+    megasam_path = f"/home/czh/code/mega-sam/outputs_cvd/{expname}_sgd_cvd_hr.npz"
+    print(f"Loading megasam camera poses from: {megasam_path}")  # 输出加载路径
+    train_c2w, test_c2w = load_megasam_c2w(megasam_path, 32, 0)
 
-    if stage == "fine":
+    if stage == "fine" or stage == "fine_static":  # 此处有修改，除了warm都要换掉初始cam pose
         pixels = get_pixels(
             scene.train_camera.dataset[0].metadata.image_size_x,
             scene.train_camera.dataset[0].metadata.image_size_y,
@@ -139,7 +144,7 @@ def scene_reconstruction(
         viewdirs = np.stack([x, y, np.ones_like(x)], axis=-1)
         local_viewdirs = viewdirs / np.linalg.norm(viewdirs, axis=-1, keepdims=True)
 
-        # update viewpoint_stack，这里是fine阶段从posenet读取cam，TODO：已修改
+        # update viewpoint_stack，这里是fine阶段从posenet读取cam，0821修改为static fine也从这里读
         with torch.no_grad():
             for cam_index in range(len(viewpoint_stack)):
                 # time_in = torch.tensor(cam.time).float().cuda()
@@ -170,32 +175,63 @@ def scene_reconstruction(
                     dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy(),
                 )
 
-            for view_id in range(len(my_test_cams)):  # TODO: （已修改）现在是直接取第一个train cam作为所有的test cam（nvidia特性），要改为单独设置
-                test_c2w_matrix = test_c2w[view_id]
-                # 提取c2w的旋转矩阵R和平移向量T
-                R_c2w = test_c2w_matrix[:3, :3]  # 相机到世界的旋转矩阵
-                T_c2w = test_c2w_matrix[:3, 3]   # 相机到世界的平移向量（相机原点在世界坐标系中的位置）
+            for view_id in range(len(my_test_cams)):  # 修改为对应的train cam向右平移7cm
+                # 修改测试相机部分：每个测试相机对应训练相机并相对自身向右移动7cm
+                # 确保测试相机数量不超过训练相机
+                if view_id < len(viewpoint_stack):
+                    # 获取对应训练相机的w2c位姿
+                    w2c_R = viewpoint_stack[view_id].R  # 世界到相机的旋转矩阵
+                    w2c_T = viewpoint_stack[view_id].T  # 世界原点在相机坐标系中的位置
+                    
+                    # 1. 将w2c转换为c2w（相机在世界中的位姿）
+                    c2w_R = w2c_R.T  # 相机到世界的旋转矩阵（w2c旋转的转置）
+                    c2w_T = -np.dot(c2w_R, w2c_T)  # 相机在世界坐标系中的位置
+                    
+                    # 2. 计算相机自身X轴（向右方向）在世界坐标系中的向量
+                    # 相机局部X轴（右方向）在世界坐标系中的表示是c2w旋转矩阵的第0列
+                    right_direction = c2w_R[:, 0]  # 单位向量
+                    
+                    # 3. 沿相机自身右方向移动7cm（0.07米）
+                    c2w_T += 0.01 * right_direction  # 在世界坐标系中应用平移
+                    
+                    # 4. 将修改后的c2w转换回w2c，用于更新相机
+                    new_w2c_R = w2c_R  # 旋转矩阵不变
+                    new_w2c_T = -np.dot(w2c_R, c2w_T)  # 计算新的平移向量
+                    
+                    # 更新测试相机位姿
+                    my_test_cams[view_id].update_cam(
+                        new_w2c_R, 
+                        new_w2c_T, 
+                        local_viewdirs, 
+                        batch_shape, 
+                        viewpoint_stack[view_id].focal
+                    )
+                else:
+                    # 如果测试相机多于训练相机，使用最后一个训练相机的位姿并平移
+                    last_idx = len(viewpoint_stack) - 1
+                    w2c_R = viewpoint_stack[last_idx].R
+                    w2c_T = viewpoint_stack[last_idx].T
+                    
+                    # 同样的转换和平移过程
+                    c2w_R = w2c_R.T
+                    c2w_T = -np.dot(c2w_R, w2c_T)
+                    right_direction = c2w_R[:, 0]
+                    c2w_T += 0.01 * right_direction
+                    new_w2c_R = w2c_R
+                    new_w2c_T = -np.dot(w2c_R, c2w_T)
+                    
+                    my_test_cams[view_id].update_cam(
+                        new_w2c_R, 
+                        new_w2c_T, 
+                        local_viewdirs, 
+                        batch_shape, 
+                        viewpoint_stack[last_idx].focal
+                    )
                 
-                # 将c2w转换为w2c（世界到相机）
-                # 1. 旋转矩阵：w2c的旋转 = c2w旋转的转置（正交矩阵性质）
-                R_w2c = R_c2w.T
-                # 2. 平移向量：w2c的平移 = - (w2c旋转矩阵 × c2w平移向量)
-                T_w2c = -np.dot(R_w2c, T_c2w)
-
-                # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
-                pred_R = torch.from_numpy(R_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
-                pred_T = torch.from_numpy(T_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3]
-
-                R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
-                t_ = pred_T.detach().cpu().numpy()
-
-                my_test_cams[view_id].update_cam(
-                    R_[0], t_[0], local_viewdirs, batch_shape, viewpoint_stack[0].focal
-                )
-
                 # my_test_cams[view_id].update_cam(
                 #     viewpoint_stack[0].R, viewpoint_stack[0].T, local_viewdirs, batch_shape, viewpoint_stack[0].focal
                 # )
+
     else:  # warm 或 static fine 阶段
         pixels = get_pixels(
             scene.train_camera.dataset[0].metadata.image_size_x,
@@ -234,9 +270,9 @@ def scene_reconstruction(
         next_viewpoint_cams = []
 
         # 用于记录索引
-        viewpoint_ids = []
-        prev_viewpoint_ids = []
-        next_viewpoint_ids = []
+        # viewpoint_ids = []
+        # prev_viewpoint_ids = []
+        # next_viewpoint_ids = []
 
         idx = 0
         while idx < batch_size:
@@ -247,7 +283,7 @@ def scene_reconstruction(
             
             id = viewpoint_stack_ids.pop(id)
             viewpoint_cams.append(viewpoint_stack[id])
-            viewpoint_ids.append(id)  # 此处修改
+            # viewpoint_ids.append(id)  # 此处修改
             idx += 1
 
             # Sample 3 views for training (1 target 2 reference)
@@ -257,12 +293,12 @@ def scene_reconstruction(
             # 从前半部分随机选择prev视角
             prev_id = all_ids.pop(randint(0, (len(all_ids) - 1) // 2))
             prev_viewpoint_cams.append(viewpoint_stack[prev_id])
-            prev_viewpoint_ids.append(prev_id)  # 此处修改
+            # prev_viewpoint_ids.append(prev_id)  # 此处修改
 
             # 从后半部分随机选择next视角
             next_id = all_ids.pop(randint((len(all_ids) - 1) // 2, len(all_ids) - 1))
             next_viewpoint_cams.append(viewpoint_stack[next_id])
-            next_viewpoint_ids.append(next_id)  # 此处修改
+            # next_viewpoint_ids.append(next_id)  # 此处修改
 
         # Render
         if (iteration - 1) == debug_from:
@@ -952,30 +988,60 @@ def scene_reconstruction(
                     / dyn_gaussians._posenet.instance_scale_list[0].detach(),
                 )
 
-                if scene.dataset_type == "nvidia": # 这里进行了同line173的修改
+                if scene.dataset_type == "nvidia": # 修改
                     
                     for view_id in range(len(my_test_cams)):
-                        test_c2w_matrix = test_c2w[view_id]
-                        # 提取c2w的旋转矩阵R和平移向量T
-                        R_c2w = test_c2w_matrix[:3, :3]  # 相机到世界的旋转矩阵
-                        T_c2w = test_c2w_matrix[:3, 3]   # 相机到世界的平移向量（相机原点在世界坐标系中的位置）
-                        
-                        # 将c2w转换为w2c（世界到相机）
-                        # 1. 旋转矩阵：w2c的旋转 = c2w旋转的转置（正交矩阵性质）
-                        R_w2c = R_c2w.T
-                        # 2. 平移向量：w2c的平移 = - (w2c旋转矩阵 × c2w平移向量)
-                        T_w2c = -np.dot(R_w2c, T_c2w)
-
-                        # 转换为与原代码匹配的格式（增加批次维度并转换为torch张量）
-                        pred_R = torch.from_numpy(R_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3, 3]
-                        pred_T = torch.from_numpy(T_w2c).unsqueeze(0).cuda()  # 形状变为 [1, 3]
-
-                        R_ = torch.transpose(pred_R, 2, 1).detach().cpu().numpy()
-                        t_ = pred_T.detach().cpu().numpy()
-
-                        my_test_cams[view_id].update_cam(
-                            R_[0], t_[0], local_viewdirs, batch_shape, viewpoint_stack[0].focal
-                        )
+                        # 修改测试相机部分：每个测试相机对应训练相机并相对自身向右移动7cm
+                        # 确保测试相机数量不超过训练相机
+                        if view_id < len(viewpoint_stack):
+                            # 获取对应训练相机的w2c位姿
+                            w2c_R = viewpoint_stack[view_id].R  # 世界到相机的旋转矩阵
+                            w2c_T = viewpoint_stack[view_id].T  # 世界原点在相机坐标系中的位置
+                            
+                            # 1. 将w2c转换为c2w（相机在世界中的位姿）
+                            c2w_R = w2c_R.T  # 相机到世界的旋转矩阵（w2c旋转的转置）
+                            c2w_T = -np.dot(c2w_R, w2c_T)  # 相机在世界坐标系中的位置
+                            
+                            # 2. 计算相机自身X轴（向右方向）在世界坐标系中的向量
+                            # 相机局部X轴（右方向）在世界坐标系中的表示是c2w旋转矩阵的第0列
+                            right_direction = c2w_R[:, 0]  # 单位向量
+                            
+                            # 3. 沿相机自身右方向移动7cm（0.07米）
+                            c2w_T += 0.07 * right_direction  # 在世界坐标系中应用平移
+                            
+                            # 4. 将修改后的c2w转换回w2c，用于更新相机
+                            new_w2c_R = w2c_R  # 旋转矩阵不变
+                            new_w2c_T = -np.dot(w2c_R, c2w_T)  # 计算新的平移向量
+                            
+                            # 更新测试相机位姿
+                            my_test_cams[view_id].update_cam(
+                                new_w2c_R, 
+                                new_w2c_T, 
+                                local_viewdirs, 
+                                batch_shape, 
+                                viewpoint_stack[view_id].focal
+                            )
+                        else:
+                            # 如果测试相机多于训练相机，使用最后一个训练相机的位姿并平移
+                            last_idx = len(viewpoint_stack) - 1
+                            w2c_R = viewpoint_stack[last_idx].R
+                            w2c_T = viewpoint_stack[last_idx].T
+                            
+                            # 同样的转换和平移过程
+                            c2w_R = w2c_R.T
+                            c2w_T = -np.dot(c2w_R, w2c_T)
+                            right_direction = c2w_R[:, 0]
+                            c2w_T += 0.07 * right_direction
+                            new_w2c_R = w2c_R
+                            new_w2c_T = -np.dot(w2c_R, c2w_T)
+                            
+                            my_test_cams[view_id].update_cam(
+                                new_w2c_R, 
+                                new_w2c_T, 
+                                local_viewdirs, 
+                                batch_shape, 
+                                viewpoint_stack[last_idx].focal
+                            )
 
                     # for view_id in range(len(my_test_cams)):
                     #     my_test_cams[view_id].update_cam(
@@ -1193,7 +1259,7 @@ def scene_reconstruction(
             dyn_tracklet = torch.gather(
                 tracklet[None].expand(dyn_coord_2d.shape[0], -1, -1, -1),
                 2,
-                dyn_tracklet_index[:, None, None, None].expand(-1, 12, -1, 2),
+                dyn_tracklet_index[:, None, None, None].expand(-1, 32, -1, 2),
             ).squeeze(
                 2
             )  # N_dyn_pts, N_time, 2
@@ -1335,6 +1401,7 @@ def training(
         tb_writer,
         opt.coarse_iterations,
         timer,
+        expname,
     )
     scene.cameras_extent = 1
     stat_gaussians.create_from_pcd(pcd=stat_pc, spatial_lr_scale=5, time_line=0)
@@ -1357,6 +1424,7 @@ def training(
         tb_writer,
         opt.coarse_iterations,
         timer,
+        expname,
     )
     
     BEST_PSNR, BEST_ITER = scene_reconstruction(
@@ -1376,6 +1444,7 @@ def training(
         tb_writer,
         opt.iterations,
         timer,
+        expname,
     )
 
     return BEST_PSNR, BEST_ITER
@@ -1385,7 +1454,7 @@ def prepare_output_and_logger(expname):
     if not args.model_path:
         unique_str = expname
 
-        args.model_path = os.path.join("./output/", unique_str)
+        args.model_path = os.path.join("/share/czh/splinegs_0906/", unique_str)
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
     os.makedirs(args.model_path, exist_ok=True)

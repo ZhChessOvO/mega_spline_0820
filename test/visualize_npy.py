@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import cv2
 
 # 1. 读取 .npy 文件（关键：深度图通常为单通道，形状可能是 (H, W) 或 (H, W, 1)）
-file_path = "/share/czh/nvidia_megasam/Playground/depth_anything/000.npy"
+file_path = "/share/czh/stereo4d/ski/depth_anything/000.npy"
 depth_data = np.load(file_path)
 
 # 2. 预处理：若有多余通道，压缩为单通道（如 (H,W,1) → (H,W)）
@@ -30,5 +30,5 @@ plt.colorbar(im, label="Depth Value")
 
 # 保存图像（可选，保存为 PNG 格式，路径可自定义）
 plt.tight_layout()  # 自动调整子图间距
-plt.savefig("/home/czh/code/SplineGS/test/image/depthanything_block.png", dpi=300, bbox_inches="tight")
+plt.savefig("/home/czh/code/SplineGS/test/image/depthanything_ski.png", dpi=300, bbox_inches="tight")
 # plt.show()

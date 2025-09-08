@@ -34,8 +34,8 @@ def convert_rgba_to_rgb(directory):
 if __name__ == "__main__":
     # 要处理的两个目录
     directories = [
-        "/share/czh/dycheck_splinegs/block/gt",
-        "/share/czh/dycheck_splinegs/block/images_2"
+        "/share/czh/stereo4d/ski/gt",
+        "/share/czh/stereo4d/ski/images_2"
     ]
     
     # 处理每个目录
