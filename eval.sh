@@ -1,7 +1,7 @@
-python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Balloon1/ --expname "Balloon1" --configs arguments/nvidia_rodynrf/Balloon1.py --checkpoint /share/czh/splinegs_0829/Balloon1/point_cloud/iteration_3000
-python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Balloon2/ --expname "Balloon2" --configs arguments/nvidia_rodynrf/Balloon2.py --checkpoint /share/czh/splinegs_0829/Balloon2/point_cloud/iteration_3000
-python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Jumping/ --expname "Jumping" --configs arguments/nvidia_rodynrf/Jumping.py --checkpoint /share/czh/splinegs_0829/Jumping/point_cloud/iteration_3000
-python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Playground/ --expname "Playground" --configs arguments/nvidia_rodynrf/Playground.py --checkpoint /share/czh/splinegs_0829/Playground/point_cloud/iteration_3000
-python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Skating/ --expname "Skating" --configs arguments/nvidia_rodynrf/Skating.py --checkpoint /share/czh/splinegs_0829/Skating/point_cloud/iteration_3000
-python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Truck/ --expname "Truck" --configs arguments/nvidia_rodynrf/Truck.py --checkpoint /share/czh/splinegs_0829/Truck/point_cloud/iteration_3000
-python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Umbrella/ --expname "Umbrella" --configs arguments/nvidia_rodynrf/Umbrella.py --checkpoint /share/czh/splinegs_0829/Umbrella/point_cloud/iteration_3000
+python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Balloon1/ --expname "Balloon1" --configs arguments/nvidia_rodynrf/Balloon1.py --checkpoint /share/czh/splinegs_0828/Balloon1/point_cloud/iteration_5000
+python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Balloon2/ --expname "Balloon2" --configs arguments/nvidia_rodynrf/Balloon2.py --checkpoint /share/czh/splinegs_0828/Balloon2/point_cloud/iteration_5000
+python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Jumping/ --expname "Jumping" --configs arguments/nvidia_rodynrf/Jumping.py --checkpoint /share/czh/splinegs_0828/Jumping/point_cloud/iteration_5000
+python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Playground/ --expname "Playground" --configs arguments/nvidia_rodynrf/Playground.py --checkpoint /share/czh/splinegs_0828/Playground/point_cloud/iteration_5000
+python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Skating/ --expname "Skating" --configs arguments/nvidia_rodynrf/Skating.py --checkpoint /share/czh/splinegs_0828/Skating/point_cloud/iteration_5000
+python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Truck/ --expname "Truck" --configs arguments/nvidia_rodynrf/Truck.py --checkpoint /share/czh/splinegs_0828/Truck/point_cloud/iteration_5000
+python eval_nvidia.py -s /share/czh/nvidia_rodynrf/Umbrella/ --expname "Umbrella" --configs arguments/nvidia_rodynrf/Umbrella.py --checkpoint /share/czh/splinegs_0828/Umbrella/point_cloud/iteration_5000

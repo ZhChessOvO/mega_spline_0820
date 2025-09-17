@@ -5,9 +5,9 @@ import numpy as np
 
 def select_and_save_images():
     # 源目录和目标目录
-    source_dir = "/share/stereo4d_dataset/datasets_2/_YIveTo-kPc_28428428/"
-    target_images_dir = "/share/czh/stereo4d/pig/images_2/"
-    target_gt_dir = "/share/czh/stereo4d/pig/gt/"
+    source_dir = "/share/czh/stereo4d_right/cow/"
+    target_images_dir = "/share/czh/stereo4d_right/cow_filtered/"
+    target_gt_dir = "/share/czh/stereo4d_right/cow_gt/"
     
     # 创建目标目录（如果不存在）
     os.makedirs(target_images_dir, exist_ok=True)

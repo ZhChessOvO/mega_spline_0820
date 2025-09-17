@@ -25,7 +25,7 @@ def convert_mask(image_path):
     print(f"已处理并保存：{image_path}")
 
 # 图像所在目录
-mask_directory = "/share/czh/stereo4d/pig/masks/pig"
+mask_directory = "/share/czh/stereo4d/cow/motion_masks/"
 
 # 遍历目录下 000.png 到 031.png 文件
 for i in range(32):

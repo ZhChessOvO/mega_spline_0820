@@ -1222,7 +1222,7 @@ def prepare_output_and_logger(expname):
     if not args.model_path:
         unique_str = expname
 
-        args.model_path = os.path.join("/share/czh/splinegs_0828/", unique_str)
+        args.model_path = os.path.join("/share/czh/splinegs_0914/", unique_str)
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
     os.makedirs(args.model_path, exist_ok=True)
@@ -1338,7 +1338,7 @@ if __name__ == "__main__":
         "--save_iterations",
         nargs="+",
         type=int,
-        default=[1000, 3000, 4000, 5000, 6000, 7_000, 9000, 10000, 12000, 14000, 15000, 20000],
+        default=[1000, 3000, 5000, 10000, 15000, 20000, 25000],
     )
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("-render_process", action="store_true")

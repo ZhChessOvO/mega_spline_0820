@@ -14,12 +14,88 @@ from utils.graphics_utils import pts2pixel
 from utils.main_utils import get_pixels
 from utils.image_utils import psnr
 from gsplat.rendering import fully_fused_projection
-from scene import GaussianModel, Scene, dataset_readers, deformation
 import random
+from tqdm import tqdm
 
 
 def normalize_image(img):
     return (2.0 * img - 1.0)[None, ...]
+
+
+def load_stereo_gt_images(gt_dir):
+    """加载立体图像作为Ground Truth"""
+    gt_list = []
+    # 读取PNG和JPG格式的图像
+    for ext in ['*.png', '*.jpg']:
+        gt_list.extend(sorted(glob.glob(os.path.join(gt_dir, ext))))
+    
+    img_data = []
+    for img_path in gt_list:
+        image = cv2.imread(img_path)[..., ::-1]  # 转换为RGB
+        h, w, _ = image.shape
+        # 保持与渲染图像相同尺寸
+        image = cv2.resize(image, (w, h))
+        img_data.append(image)
+    
+    # 转换为Tensor并归一化
+    img_data = torch.Tensor(np.array(img_data)).float().cuda() / 255.0  # [B, H, W, C]
+    return img_data
+
+
+def optimize_camera_poses(scene, test_cams, renderFunc, background, gt_images, num_steps=1000):
+    """优化测试相机的平移向量以最大化PSNR"""
+    # 确保测试相机数量与GT图像数量匹配
+    assert len(test_cams) == len(gt_images), "测试相机数量与GT图像数量不匹配"
+    
+    # 初始化可优化的平移向量
+    cam_translations = []
+    for cam in test_cams:
+        T = torch.tensor(cam.T, dtype=torch.float32, device="cuda", requires_grad=True)
+        cam_translations.append(T)
+    
+    # 设置优化器
+    optimizer = torch.optim.Adam(cam_translations, lr=1e-4)
+    
+    # 优化循环
+    for step in tqdm(range(num_steps), desc="优化相机位姿"):
+        optimizer.zero_grad()
+        total_loss = 0.0
+        psnr_values = []
+        
+        for i, (cam, T, gt_img) in enumerate(zip(test_cams, cam_translations, gt_images)):
+            # 更新相机平移向量
+            cam.T = T.detach().cpu().numpy()
+            
+            # 渲染当前相机视角的图像
+            render_pkg = renderFunc(cam, scene.stat_gaussians, scene.dyn_gaussians, background)
+            rendered_img = torch.clamp(render_pkg["render"], 0.0, 1.0)  # [C, H, W]
+            
+            # 转换为与GT相同的形状 [H, W, C]
+            rendered_img = rendered_img.permute(1, 2, 0)
+            
+            # 计算L1损失（用于优化）
+            loss = torch.abs(rendered_img - gt_img).mean()
+            total_loss += loss
+            
+            # 计算PSNR（用于监控）
+            mse = torch.nn.functional.mse_loss(rendered_img, gt_img)
+            current_psnr = 20 * torch.log10(1.0 / torch.sqrt(mse))
+            psnr_values.append(current_psnr.item())
+        
+        # 反向传播和参数更新
+        total_loss.backward()
+        optimizer.step()
+        
+        # 打印优化进度
+        if (step + 1) % 10 == 0:
+            avg_psnr = sum(psnr_values) / len(psnr_values)
+            print(f"优化步骤 {step+1}/{num_steps} - 平均PSNR: {avg_psnr:.2f} dB - 总损失: {total_loss.item():.6f}")
+    
+    # 更新相机最终位姿
+    for cam, T in zip(test_cams, cam_translations):
+        cam.T = T.detach().cpu().numpy()
+    
+    return test_cams
 
 
 def training_report(scene: Scene, train_cams, test_cams, renderFunc, background, stage, dataset_type, path):
@@ -27,7 +103,7 @@ def training_report(scene: Scene, train_cams, test_cams, renderFunc, background,
     torch.cuda.empty_cache()
 
     # 定义目标保存目录
-    save_root = "/share/czh/splinegs_0915/pig_result"
+    save_root = "/share/czh/splinegs_0909/ski_align_test"
     # 创建保存目录（如果不存在）
     os.makedirs(save_root, exist_ok=True)
 
@@ -94,6 +170,7 @@ def training_report(scene: Scene, train_cams, test_cams, renderFunc, background,
 
 
 if __name__ == "__main__":
+    # 添加GT图像目录的命令行参数
     parser = ArgumentParser(description="Training script parameters")
     lp = ModelParams(parser)
     op = OptimizationParams(parser)
@@ -105,6 +182,14 @@ if __name__ == "__main__":
     )
     parser.add_argument("--expname", type=str, default="")
     parser.add_argument("--configs", type=str, default="")
+    parser.add_argument(
+        "--stereo_gt_dir", type=str, required=True, 
+        help="Directory containing stereo ground truth images"
+    )
+    parser.add_argument(
+        "--optim_steps", type=int, default=1000, 
+        help="Number of optimization steps for camera poses"
+    )
 
     args = parser.parse_args(sys.argv[1:])
     if args.configs:
@@ -179,27 +264,39 @@ if __name__ == "__main__":
                 dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy(),
             )
 
+    # 加载立体图像GT
+    import glob
+    gt_images = load_stereo_gt_images(args.stereo_gt_dir)
+    
+    # 初始化测试相机位姿（替换原来的test_T[0] -= 0.02）
     for view_id in range(len(my_test_cams)):
-        test_T = viewpoint_stack[view_id].T
-        print("test_T:", test_T, test_T.shape)
-        test_T[0] -= 0.01
-        print("new test_T:", test_T)
+        # 使用训练相机的位姿作为初始值
         my_test_cams[view_id].update_cam(
             viewpoint_stack[view_id].R,
-            test_T,
+            viewpoint_stack[view_id].T,  # 初始平移向量
             local_viewdirs,
             batch_shape,
             dyn_gaussians._posenet.focal_bias.exp().detach().cpu().numpy(),
         )
+    
+    # 优化测试相机的平移向量
+    optimized_test_cams = optimize_camera_poses(
+        scene, 
+        my_test_cams, 
+        render_infer, 
+        background, 
+        gt_images,
+        num_steps=args.optim_steps
+    )
 
-    # 调用时无需传入原始path参数（因为已在training_report中硬编码目标路径）
+    # 保存优化后的结果
     training_report(
         scene,
         viewpoint_stack,
-        my_test_cams,
+        optimized_test_cams,
         render_infer,
         background,
         "fine",
         scene.dataset_type,
-        "",  # 这里路径已无用，传入空字符串
+        "",
     )

@@ -1,5 +1,9 @@
 _base_ = "./default.py"
 
+# ModelParams = dict(
+#     depth_type="disp",
+# )
+
 OptimizationParams = dict(
     w_normal=1.0,
     opacity_reset_interval=30_000,

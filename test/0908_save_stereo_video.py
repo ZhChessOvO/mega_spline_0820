@@ -17,13 +17,13 @@ def get_sorted_images(path):
 def stitch_and_create_video():
     # 定义输入路径
     input_paths = [
-        "/share/czh/stereo4d/ski/images_2",
-        "/share/czh/splinegs_0906/image3/train",
-        "/share/czh/splinegs_0906/image3/test"
+        "/share/czh/stereo4d/cow/images_2",
+        "/share/czh/splinegs_0915/cow_baseline_result/train",
+        "/share/czh/splinegs_0915/cow_baseline_result/test"
     ]
     
     # 输出视频路径
-    output_video = "/share/czh/splinegs_0906/stereo_video.mp4"
+    output_video = "/share/czh/splinegs_0915/stereo_video_cow_baseline.mp4"
     
     # 获取每个路径下的图片列表
     image_lists = [get_sorted_images(path) for path in input_paths]
