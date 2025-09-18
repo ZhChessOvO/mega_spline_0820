@@ -147,8 +147,10 @@ def scene_reconstruction(
                 )
 
             for view_id in range(len(my_test_cams)):
+                test_T = viewpoint_stack[view_id].T
+                test_T[0] -= 0.01
                 my_test_cams[view_id].update_cam(
-                    viewpoint_stack[view_id].R, viewpoint_stack[view_id].T, local_viewdirs, batch_shape, viewpoint_stack[view_id].focal
+                    viewpoint_stack[view_id].R, test_T, local_viewdirs, batch_shape, viewpoint_stack[view_id].focal
                 )
     else:
         pixels = get_pixels(
@@ -815,9 +817,11 @@ def scene_reconstruction(
 
                 if scene.dataset_type == "nvidia":
                     for view_id in range(len(my_test_cams)):
+                        test_T = viewpoint_stack[view_id].T
+                        test_T[0] -= 0.01
                         my_test_cams[view_id].update_cam(
                             viewpoint_stack[view_id].R,
-                            viewpoint_stack[view_id].T,
+                            test_T,
                             local_viewdirs,
                             batch_shape,
                             viewpoint_stack[view_id].focal,

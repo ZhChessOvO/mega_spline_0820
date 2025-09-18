@@ -27,7 +27,7 @@ def training_report(scene: Scene, train_cams, test_cams, renderFunc, background,
     torch.cuda.empty_cache()
 
     # 定义目标保存目录
-    save_root = "/share/czh/splinegs_0915/pig_result"
+    save_root = "/share/czh/splinegs_0917_cam/test"
     # 创建保存目录（如果不存在）
     os.makedirs(save_root, exist_ok=True)
 
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     for view_id in range(len(my_test_cams)):
         test_T = viewpoint_stack[view_id].T
         print("test_T:", test_T, test_T.shape)
-        test_T[0] -= 0.01
+        test_T[0] -= 0.0027 # ski: x-0.00086  pig: x-0.02  cow: x-0.0027
         print("new test_T:", test_T)
         my_test_cams[view_id].update_cam(
             viewpoint_stack[view_id].R,
