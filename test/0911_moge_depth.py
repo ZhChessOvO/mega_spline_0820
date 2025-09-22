@@ -82,7 +82,7 @@ def process_scene(scene_name, model, base_dir):
 if __name__ == "__main__":
     # 配置参数
     base_directory = "/share/czh/stereo4d_moge"
-    scenes = ["cow", "pig", "ski"]
+    scenes = ["dog"]
     
     # 检查CUDA是否可用
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

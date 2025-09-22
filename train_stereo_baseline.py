@@ -148,7 +148,7 @@ def scene_reconstruction(
 
             for view_id in range(len(my_test_cams)):
                 test_T = viewpoint_stack[view_id].T
-                test_T[0] -= 0.01
+                # test_T[0] -= 0.01
                 my_test_cams[view_id].update_cam(
                     viewpoint_stack[view_id].R, test_T, local_viewdirs, batch_shape, viewpoint_stack[view_id].focal
                 )
@@ -818,7 +818,7 @@ def scene_reconstruction(
                 if scene.dataset_type == "nvidia":
                     for view_id in range(len(my_test_cams)):
                         test_T = viewpoint_stack[view_id].T
-                        test_T[0] -= 0.01
+                        # test_T[0] -= 0.01
                         my_test_cams[view_id].update_cam(
                             viewpoint_stack[view_id].R,
                             test_T,
@@ -1226,7 +1226,7 @@ def prepare_output_and_logger(expname):
     if not args.model_path:
         unique_str = expname
 
-        args.model_path = os.path.join("/share/czh/splinegs_0917/", unique_str)
+        args.model_path = os.path.join("/share/czh/splinegs_0918/only_moge/", unique_str)
     # Set up output folder
     print("Output folder: {}".format(args.model_path))
     os.makedirs(args.model_path, exist_ok=True)

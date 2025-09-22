@@ -1,6 +1,7 @@
 import numpy as np
 import os
 from PIL import Image
+import matplotlib.pyplot as plt
 
 def replace_depth_maps(npz_path, target_dir):
     # 检查目标目录是否存在
@@ -47,23 +48,52 @@ def replace_depth_maps(npz_path, target_dir):
         else:
             # 如果所有值都相同，创建一个全灰图像
             depth_normalized = np.ones_like(depth_map, dtype=np.uint8) * 128
+
+        # 应用VIRIDIS颜色映射
+        cm = plt.cm.get_cmap('viridis')
+        depth_colored = cm(depth_normalized)
+
+        # 转换为8位RGB图像
+        depth_colored = (depth_colored[:, :, :3] * 255).astype(np.uint8)
         
         # 保存为PNG文件
         png_path = os.path.join(target_dir, f"{idx_str}.png")
-        Image.fromarray(depth_normalized).save(png_path)
+        Image.fromarray(depth_colored).save(png_path)
         print(f"已保存PNG文件: {png_path}")
     
     print("所有深度图替换完成")
 
 if __name__ == "__main__":
-    # NPZ文件路径
-    npz_file_path = "/home/czh/code/mega-sam/outputs_cvd/Umbrella_sgd_cvd_hr.npz"
-    
-    # 目标目录路径
-    target_directory = "/share/czh/nvidia_megasam/Umbrella/uni_depth"
 
-    # 执行替换操作
-    try:
-        replace_depth_maps(npz_file_path, target_directory)
-    except Exception as e:
-        print(f"操作失败: {str(e)}")
+    scenes = [
+        "Balloon1",
+        "Balloon2",
+        "Jumping",
+        "Playground",
+        "Skating",
+        "Truck",
+        "Umbrella"
+    ]
+
+    # NPZ文件和目标目录的基础路径
+    npz_base_path = "/home/czh/code/mega-sam/outputs_cvd"
+    target_base_dir = "/share/czh/nvidia_megasam"
+    
+    # 依次处理每个场景
+    for scene in scenes:
+        print(f"\n===== 开始处理场景: {scene} =====")
+        try:
+            # 构建当前场景的NPZ文件路径和目标目录路径
+            npz_file_path = os.path.join(npz_base_path, f"{scene}_sgd_cvd_hr.npz")
+            target_directory = os.path.join(target_base_dir, scene, "uni_depth")
+            
+            # 确保目标目录存在
+            os.makedirs(target_directory, exist_ok=True)
+            
+            # 执行替换操作
+            replace_depth_maps(npz_file_path, target_directory)
+            print(f"场景 {scene} 处理完成")
+        except Exception as e:
+            print(f"场景 {scene} 处理失败: {str(e)}")
+    
+    print("\n所有场景处理完毕")

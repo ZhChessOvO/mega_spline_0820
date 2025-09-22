@@ -32,6 +32,8 @@ from utils.main_utils import get_gs_mask, get_pixels, get_normals, error_to_prob
 from utils.scene_utils import render_training_image
 from utils.timer import Timer
 
+from load_megasam import load_megasam_c2w, c2w_to_w2c
+
 try:
     from torch.utils.tensorboard import SummaryWriter
 
@@ -1159,7 +1161,17 @@ def training(
     # print(train_cam_0922.__class__)
     # print(train_cam_0922.shape)
     # print("==============================")
-    dyn_gaussians.create_pose_network(hyper, scene.getTrainCameras())  # pose network with instance scaling
+
+    megasam_path = f"/home/czh/code/mega-sam/outputs_cvd/{expname}_sgd_cvd_hr.npz"
+    print(f"Loading megasam camera poses from: {megasam_path}")  # 输出加载路径
+    train_c2w, test_c2w = load_megasam_c2w(megasam_path, 12, 0)
+
+    mega_R, mega_T = c2w_to_w2c(train_c2w)
+
+    train_cameras = scene.getTrainCameras()
+    train_cameras.set_poses(mega_R, mega_T)
+
+    dyn_gaussians.create_pose_network(hyper, train_cameras)  # pose network with instance scaling
     stat_pc, dyn_pc, dyn_tracjectory = scene_reconstruction(
         dataset,
         opt,

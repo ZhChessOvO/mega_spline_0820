@@ -3,6 +3,7 @@ from scene.cameras import Camera
 from torch.utils.data import Dataset
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import focal2fov
+import numpy as np  # 确保导入numpy
 
 
 class FourDGSdataset(Dataset):
@@ -10,20 +11,48 @@ class FourDGSdataset(Dataset):
         self.dataset = dataset
         self.args = args
         self.dataset_type = dataset_type
+        self.override_R = None  # 用于存储覆盖的旋转矩阵列表
+        self.override_T = None  # 用于存储覆盖的平移向量列表
+
+    def set_poses(self, R, T):
+        """
+        设置覆盖的相机位姿，后续获取相机数据时会优先使用这些位姿
+        Args:
+            R: 旋转矩阵列表，每个元素为代表w2c的np array
+            T: 平移向量列表，每个元素为代表w2c的np array
+        """
+        # 验证输入长度是否一致
+        if len(R) != len(T):
+            raise ValueError("R和T的长度必须一致")
+        # 验证输入长度是否与数据集匹配
+        if len(R) != len(self.dataset):
+            raise ValueError(f"输入的位姿数量({len(R)})必须与数据集长度({len(self.dataset)})匹配")
+        self.override_R = R
+        self.override_T = T
 
     def __getitem__(self, index):
         if self.dataset_type != "PanopticSports":
             try:
                 image, w2c, time = self.dataset[index]
-                R, T = w2c
+                # 优先使用覆盖的位姿，如果存在
+                if self.override_R is not None and self.override_T is not None:
+                    R = self.override_R[index]
+                    T = self.override_T[index]
+                else:
+                    R, T = w2c
                 FovX = focal2fov(self.dataset.focal[0], image.shape[2])
                 FovY = focal2fov(self.dataset.focal[0], image.shape[1])
                 mask = None
             except:
                 caminfo = self.dataset[index]
                 image = PILtoTorch(caminfo.image, (caminfo.image.width, caminfo.image.height))
-                R = caminfo.R
-                T = caminfo.T
+                # 优先使用覆盖的位姿，如果存在
+                if self.override_R is not None and self.override_T is not None:
+                    R = self.override_R[index]
+                    T = self.override_T[index]
+                else:
+                    R = caminfo.R
+                    T = caminfo.T
                 FovX = caminfo.FovX
                 FovY = caminfo.FovY
                 time = caminfo.time

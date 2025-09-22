@@ -91,7 +91,7 @@ def main():
 
     args = parser.parse_args()
     # vid_list = os.listdir(args.output_folder)
-    vid_list = ["_YIveTo-kPc_28428428", "_e_C-avimVw_23823824"]
+    vid_list = ["JwV2f29jdYY_36033333"]
 
      # 使用多进程处理，设置 max_workers=8
     worker = partial(process_video, root_dir=root_dir, npz_folder=args.npz_folder, save_dir=save_dir)

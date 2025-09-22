@@ -30,12 +30,56 @@ def load_megasam_c2w(npz_path, train_size=12, test_size=12):
     return train_c2w_list, test_c2w_list
 
 
-#  测试
+def c2w_to_w2c(c2w_list):
+    """
+    将相机到世界（c2w）的变换矩阵列表转换为世界到相机（w2c）的变换矩阵，并提取旋转矩阵R和平移向量T。
+    
+    参数:
+        c2w_list (list): 相机到世界的变换矩阵列表，每个元素是形状为(4, 4)的np.ndarray
+    
+    返回:
+        tuple: (R_list, T_list)
+            - R_list (list): 旋转矩阵列表，每个元素是形状为(3, 3)的np.ndarray（世界到相机的旋转）
+            - T_list (list): 平移向量列表，每个元素是形状为(3,)的np.ndarray（世界到相机的平移）
+    """
+    R_list = []
+    T_list = []
+    
+    for c2w in c2w_list:
+        # 提取c2w中的旋转矩阵和平移向量
+        R_c2w = c2w[:3, :3]  # 相机到世界的旋转矩阵
+        T_c2w = c2w[:3, 3]   # 相机到世界的平移向量
+        
+        # 计算w2c的旋转矩阵（c2w旋转矩阵的转置）
+        R_w2c = R_c2w.T
+        
+        # 计算w2c的平移向量（-R_w2c @ T_c2w）
+        T_w2c = -np.dot(R_w2c, T_c2w)
+        
+        R_list.append(R_w2c)
+        T_list.append(T_w2c)
+    
+    return R_list, T_list
+
+
+# 测试
 if __name__ == "__main__":
     train_c2w, test_c2w = load_megasam_c2w("/home/czh/code/mega-sam/outputs/Balloon1_droid.npz")
-    print("Train set camera to world matrices:")
-    for mat in train_c2w:
-        print(mat)
-    print("Test set camera to world matrices:")
-    for mat in test_c2w:
-        print(mat)
+    
+    # 转换训练集的c2w为w2c的R和T
+    train_R, train_T = c2w_to_w2c(train_c2w)
+    print("Train set world to camera rotation matrices:")
+    for r in train_R:
+        print(r)
+    print("Train set world to camera translation vectors:")
+    for t in train_T:
+        print(t)
+    
+    # 转换测试集的c2w为w2c的R和T
+    test_R, test_T = c2w_to_w2c(test_c2w)
+    print("Test set world to camera rotation matrices:")
+    for r in test_R:
+        print(r)
+    print("Test set world to camera translation vectors:")
+    for t in test_T:
+        print(t)
