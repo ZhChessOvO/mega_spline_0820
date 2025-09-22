@@ -139,6 +139,71 @@ class Camera(nn.Module):
 
         self.cam_ray = cam_ray.to(self.data_device)
 
+    def copy(self):
+        """创建当前Camera实例的深拷贝"""
+        # 创建新的Camera实例，暂时使用默认参数
+        new_cam = Camera(
+            colmap_id=self.colmap_id,
+            R=self.R.copy() if isinstance(self.R, np.ndarray) else self.R.clone() if isinstance(self.R, torch.Tensor) else self.R,
+            T=self.T.copy() if isinstance(self.T, np.ndarray) else self.T.clone() if isinstance(self.T, torch.Tensor) else self.T,
+            FoVx=self.FoVx,
+            FoVy=self.FoVy,
+            image=self.original_image.clone() if self.original_image is not None else None,
+            gt_alpha_mask=None,  # 后续会单独处理
+            image_name=self.image_name,
+            uid=self.uid,
+            max_time=self.max_time,
+            trans=self.trans.copy() if isinstance(self.trans, np.ndarray) else self.trans,
+            scale=self.scale,
+            data_device=self.data_device,
+            time=self.time,
+            mask=None,  # 后续会单独处理
+            metadata=self.metadata,  # 假设metadata是不可变的，或根据需要深拷贝
+            normal=None,  # 后续会单独处理
+            depth=None,  # 后续会单独处理
+            sem_mask=None,  # 后续会单独处理
+            fwd_flow=None,  # 后续会单独处理
+            bwd_flow=None,  # 后续会单独处理
+            fwd_flow_mask=None,  # 后续会单独处理
+            bwd_flow_mask=None,  # 后续会单独处理
+            instance_mask=None,  # 后续会单独处理
+            tracklet=None,  # 后续会单独处理
+            target_tracks=None,  # 后续会单独处理
+            target_visibility=None,  # 后续会单独处理
+            target_tracks_static=None,  # 后续会单独处理
+            target_visibility_static=None,  # 后续会单独处理
+        )
+        
+        # 复制张量属性（深拷贝）
+        tensor_attrs = [
+            'normal', 'a_chann', 'depth', 'sem_mask', 'instance_mask', 
+            'tracklet', 'mask', 'fwd_flow', 'bwd_flow', 'fwd_flow_mask', 
+            'bwd_flow_mask', 'target_tracks', 'target_visibility', 
+            'target_tracks_static', 'target_visibility_static', 'world_view_transform',
+            'projection_matrix', 'full_proj_transform', 'camera_center', 'cam_ray'
+        ]
+        for attr in tensor_attrs:
+            if hasattr(self, attr) and getattr(self, attr) is not None:
+                if isinstance(getattr(self, attr), torch.Tensor):
+                    setattr(new_cam, attr, getattr(self, attr).clone().to(self.data_device))
+                else:
+                    setattr(new_cam, attr, getattr(self, attr))
+        
+        # 复制其他可能的属性
+        other_attrs = ['K', 'focal', 'zfar', 'znear', 'target_ts', 'target_tracks_2d',
+                    'target_visibles', 'target_invisibles', 'target_confidences', 'target_track_depths']
+        for attr in other_attrs:
+            if hasattr(self, attr):
+                val = getattr(self, attr)
+                if isinstance(val, np.ndarray):
+                    setattr(new_cam, attr, val.copy())
+                elif isinstance(val, torch.Tensor):
+                    setattr(new_cam, attr, val.clone().to(self.data_device))
+                else:
+                    setattr(new_cam, attr, val)
+        
+        return new_cam
+    
     def update_target_ts(self, rand_target=None, init=False):
         # if init:
         #     self.target_ts = self.target_ts_all[self.init_target_ts]
