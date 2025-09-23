@@ -51,7 +51,6 @@ def compute_psnr_for_T(scene, test_cams, renderFunc, background, t_offset, viewp
 
     # psnr_list = []
 
-    # TODO: gt_image加载出现了问题
     with torch.no_grad():
         for cam_idx, cam in enumerate(temp_test_cams):
             render_pkg = renderFunc(cam, scene.stat_gaussians, scene.dyn_gaussians, background)
