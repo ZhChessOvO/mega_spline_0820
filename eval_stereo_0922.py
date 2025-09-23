@@ -26,10 +26,10 @@ def compute_psnr_for_T(scene, test_cams, renderFunc, background, t_offset, viewp
     """计算给定T[0]偏移值时的测试集PSNR（原逻辑不变）"""
     temp_test_cams = []
     # my_test_cams = test_cams.copy()
-    for view_id in range(len(test_cams)):
-        cam = test_cams[view_id].copy()
+    for view_id in range(len(viewpoint_stack)):
+        cam = viewpoint_stack[view_id].copy()
         # print(cam.__class__)
-        test_T = cam.T
+        test_T = cam.T.copy()
         test_T[0] -= t_offset  # 应用偏移
         cam.update_cam(
             cam.R,
@@ -39,10 +39,13 @@ def compute_psnr_for_T(scene, test_cams, renderFunc, background, t_offset, viewp
             focal_bias
         )
         temp_test_cams.append(cam)
+
+    # for id, cam in enumerate(temp_test_cams):
+    #     print(f"cam{id}",cam.uid,cam.R,cam.T)
     
     # # 创建保存目录
-    # save_dir = "/share/czh/splinegs_0922/test"
-    # os.makedirs(save_dir, exist_ok=True)
+    save_dir = "/share/czh/splinegs_0922/test"
+    os.makedirs(save_dir, exist_ok=True)
     
     psnr_total = 0.0
 
@@ -53,22 +56,22 @@ def compute_psnr_for_T(scene, test_cams, renderFunc, background, t_offset, viewp
         for cam_idx, cam in enumerate(temp_test_cams):
             render_pkg = renderFunc(cam, scene.stat_gaussians, scene.dyn_gaussians, background)
             image = torch.clamp(render_pkg["render"], 0.0, 1.0)
-            gt_image = torch.clamp(cam.original_image.to("cuda"), 0.0, 1.0)
+            gt_image = torch.clamp(test_cams[cam_idx].original_image.to("cuda"), 0.0, 1.0)
 
             psnr_image = psnr(image, gt_image, mask=None).mean().double().item()
             # psnr_list.append(psnr_image)
 
             psnr_total += psnr_image
 
-            # # 保存渲染图像
-            # img_np = (image.permute(1, 2, 0).detach().cpu().numpy() * 255).astype(np.uint8)
-            # img_pil = Image.fromarray(img_np)
-            # img_pil.save(os.path.join(save_dir, f"render_{cam_idx}_t{t_offset:.4f}.png"))
+            # 保存渲染图像
+            img_np = (image.permute(1, 2, 0).detach().cpu().numpy() * 255).astype(np.uint8)
+            img_pil = Image.fromarray(img_np)
+            img_pil.save(os.path.join(save_dir, f"render_{cam_idx}.png"))
             
-            # # 保存真实图像
-            # gt_np = (gt_image.permute(1, 2, 0).detach().cpu().numpy() * 255).astype(np.uint8)
-            # gt_pil = Image.fromarray(gt_np)
-            # gt_pil.save(os.path.join(save_dir, f"gt_{cam_idx}_t{t_offset:.4f}.png"))
+            # 保存真实图像
+            gt_np = (gt_image.permute(1, 2, 0).detach().cpu().numpy() * 255).astype(np.uint8)
+            gt_pil = Image.fromarray(gt_np)
+            gt_pil.save(os.path.join(save_dir, f"gt_{cam_idx}.png"))
     
     # print(psnr_list)
     return psnr_total / len(temp_test_cams)
@@ -77,7 +80,7 @@ def compute_psnr_for_T(scene, test_cams, renderFunc, background, t_offset, viewp
 def optimize_t_offset(scene, test_cams, renderFunc, background, viewpoint_stack, local_viewdirs, batch_shape, focal_bias, init_value=0.0056, search_range=(0, 1)):
     """优化T[0]偏移值（基于单峰特性持续缩小区间）"""
     left, right = search_range
-    target_precision = 0.0001  # 目标精度：最终结果误差≤0.0001
+    target_precision = 0.0005  # 目标精度：最终结果误差<0.0005
     max_iter = 100  # 最大迭代次数（防止极端情况）
     best_psnr = -1
     best_offset = init_value
@@ -316,7 +319,7 @@ if __name__ == "__main__":
 
     # 应用最佳偏移更新测试相机（原逻辑不变）
     for view_id in range(len(my_test_cams)):
-        test_T = viewpoint_stack[view_id].T
+        test_T = viewpoint_stack[view_id].T.copy()
         test_T[0] -= best_offset
         print(f"视图 {view_id} 原始T[0]: {viewpoint_stack[view_id].T[0]:.4f}, 优化后T[0]: {test_T[0]:.4f}")
         my_test_cams[view_id].update_cam(
